@@ -1,0 +1,4 @@
+(executable
+ (public_name cauldron)
+ (name main)
+ (libraries cauldron))
