@@ -1,2 +1,3 @@
 (test
- (name cauldron))
+ (name cauldron)
+ (libraries alcotest cauldron))
