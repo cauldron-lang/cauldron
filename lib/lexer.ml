@@ -1,12 +1,32 @@
-type token =
-  | Operator of string
-  | Delimiter of string
-  | Integer of string
-  | Identifier of string
-  | Keyword of string
-  | Illegal
+module Token = struct
+  type t =
+    | Operator of string
+    | Delimiter of string
+    | Integer of string
+    | Identifier of string
+    | Keyword of string
+    | Illegal
+end
 
-type t = token list
+module Tokens = struct
+  type t = Token.t array
+
+  let length = Array.length
+  let get_token tokens pointer = Array.get tokens pointer
+
+  let get_token_opt tokens pointer =
+    if pointer < Array.length tokens && pointer > 0 then
+      Some (Array.get tokens pointer)
+    else None
+
+  let rec seek_delimiter tokens current_pointer =
+    let next_pointer = current_pointer + 1 in
+    let token = get_token_opt tokens next_pointer in
+    let open Token in
+    match token with
+    | Some (Delimiter _) -> next_pointer
+    | _ -> seek_delimiter tokens next_pointer
+end
 
 let rec range i j = if j < i then [] else j :: range i (j - 1)
 
@@ -18,7 +38,7 @@ let valid_chars =
   let chars = List.map mapper (List.concat [ lowercase; uppercase ]) in
   List.concat [ chars; digits; [ "_" ] ]
 
-let valid_keywords = [ "let" ]
+let valid_keywords = [ "let"; "in" ]
 
 let get_next_char_opt pointer str =
   if !pointer + 1 < String.length str then
@@ -31,6 +51,7 @@ let tokenize str =
   while !pointer < String.length str do
     let current = String.make 1 str.[!pointer] in
     let next = get_next_char_opt pointer str in
+    let open Token in
     let () =
       match current with
       | " " -> ()
@@ -67,9 +88,10 @@ let tokenize str =
 
     pointer := !pointer + 1
   done;
-  List.rev !tokens
+  Array.of_list (List.rev !tokens)
 
 let string_of_token token =
+  let open Token in
   match token with
   | Operator operator -> "Operator(" ^ operator ^ ")"
   | Delimiter delimiter -> "Delimiter(" ^ delimiter ^ ")"
@@ -78,4 +100,5 @@ let string_of_token token =
   | Identifier identifier -> "Identifier(" ^ identifier ^ ")"
   | Illegal -> "Illegal"
 
-let to_string tokens = String.concat "," (List.map string_of_token tokens)
+let to_string tokens =
+  String.concat "," (List.map string_of_token (Array.to_list tokens))

@@ -17,4 +17,14 @@ let lex code =
   print_newline ();
   flush stdout
 
-let () = match subcommand with "rlpl" -> loop lex | _ -> exit 1
+let parse code =
+  let tokens = Cauldron.Lexer.tokenize code in
+  print_string (Cauldron.Parser.to_string (Cauldron.Parser.parse tokens));
+  print_newline ();
+  flush stdout
+
+let () =
+  match subcommand with
+  | "rlpl" -> loop lex
+  | "rppl" -> loop parse
+  | _ -> exit 1
