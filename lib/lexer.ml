@@ -6,6 +6,15 @@ module Token = struct
     | Identifier of string
     | Keyword of string
     | Illegal
+
+  let to_string token =
+    match token with
+    | Operator operator -> "Operator(" ^ operator ^ ")"
+    | Delimiter delimiter -> "Delimiter(" ^ delimiter ^ ")"
+    | Keyword keyword -> "Keyword(" ^ keyword ^ ")"
+    | Integer integer -> "Integer(" ^ integer ^ ")"
+    | Identifier identifier -> "Identifier(" ^ identifier ^ ")"
+    | Illegal -> "Illegal"
 end
 
 module Tokens = struct
@@ -15,7 +24,7 @@ module Tokens = struct
   let get_token tokens pointer = Array.get tokens pointer
 
   let get_token_opt tokens pointer =
-    if pointer < Array.length tokens && pointer > 0 then
+    if pointer < Array.length tokens && pointer >= 0 then
       Some (Array.get tokens pointer)
     else None
 
@@ -24,7 +33,7 @@ module Tokens = struct
     let token = get_token_opt tokens next_pointer in
     let open Token in
     match token with
-    | Some (Delimiter _) -> next_pointer
+    | None | Some (Delimiter _) -> next_pointer
     | _ -> seek_delimiter tokens next_pointer
 end
 
@@ -90,15 +99,5 @@ let tokenize str =
   done;
   Array.of_list (List.rev !tokens)
 
-let string_of_token token =
-  let open Token in
-  match token with
-  | Operator operator -> "Operator(" ^ operator ^ ")"
-  | Delimiter delimiter -> "Delimiter(" ^ delimiter ^ ")"
-  | Keyword keyword -> "Keyword(" ^ keyword ^ ")"
-  | Integer integer -> "Integer(" ^ integer ^ ")"
-  | Identifier identifier -> "Identifier(" ^ identifier ^ ")"
-  | Illegal -> "Illegal"
-
 let to_string tokens =
-  String.concat "," (List.map string_of_token (Array.to_list tokens))
+  String.concat "," (List.map Token.to_string (Array.to_list tokens))

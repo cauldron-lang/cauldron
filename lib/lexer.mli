@@ -6,6 +6,8 @@ module Token : sig
     | Identifier of string
     | Keyword of string
     | Illegal
+
+  val to_string: t -> string
 end
 
 module Tokens : sig

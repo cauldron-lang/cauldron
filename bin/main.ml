@@ -19,7 +19,9 @@ let lex code =
 
 let parse code =
   let tokens = Cauldron.Lexer.tokenize code in
-  print_string (Cauldron.Parser.to_string (Cauldron.Parser.parse tokens));
+  let parsed = Cauldron.Parser.parse tokens in
+  print_string (Cauldron.Parser.to_string parsed);
+  Cauldron.Parser.print_errors parsed;
   print_newline ();
   flush stdout
 

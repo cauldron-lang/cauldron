@@ -8,9 +8,10 @@ module Program = struct
 
   type t = { errors : string list; statements : statement list; pointer : int }
 
+  let errors program = program.errors
   let statements program = program.statements
   let pointer program = program.pointer
-  let init = { errors = []; statements = []; pointer = 1 }
+  let init = { errors = []; statements = []; pointer = 0 }
 
   let with_statement program statement =
     {
@@ -43,10 +44,21 @@ let parse_expression program tokens =
   let current_token = Tokens.get_token_opt tokens (Program.pointer program) in
   match current_token with
   | Some (Integer integer) ->
-      (program, Program.Expression (Program.Integer integer))
-  | _ ->
+      ( Program.incr_pointer program,
+        Program.Expression (Program.Integer integer) )
+  | Some token ->
       let new_program =
-        Program.with_error program "Invalid token in prefix position"
+        Program.with_error program
+          ("Invalid token while parsing expression: " ^ to_string token)
+      in
+      let newer_program =
+        Program.with_pointer new_program
+          (Tokens.seek_delimiter tokens (Program.pointer new_program))
+      in
+      (newer_program, InvalidExpression)
+  | None ->
+      let new_program =
+        Program.with_error program "Missing token while parsing expression"
       in
       let newer_program =
         Program.with_pointer new_program
@@ -82,28 +94,43 @@ let parse_assignment_operator program tokens assignment_name =
   | Some (Operator "=") ->
       let new_program = Program.incr_pointer program in
       parse_assignment_body new_program tokens assignment_name
-  | _ ->
+  | Some token ->
       let new_program =
         Program.with_error program
-          "Expected assignment operator after identifier in assignment \
-           statement"
+          ("Expected assignment operator after identifier in assignment \
+            statement, recieved: " ^ to_string token)
+      in
+      Program.with_pointer new_program
+        (Tokens.seek_delimiter tokens (Program.pointer new_program))
+  | None ->
+      let new_program =
+        Program.with_error program
+          "Missing assignment operator after identifier in assignment statement"
       in
       Program.with_pointer new_program
         (Tokens.seek_delimiter tokens (Program.pointer new_program))
 
 let parse_assignment program tokens =
   let open Lexer in
-  let next_poiner = Program.pointer program + 1 in
-  let next_token = Tokens.get_token_opt tokens next_poiner in
+  let next_pointer = Program.pointer program + 1 in
+  let next_token = Tokens.get_token_opt tokens next_pointer in
   let open Lexer.Token in
   match next_token with
   | Some (Identifier assignment_name) ->
-      let new_program = Program.incr_pointer program in
+      let new_program = Program.with_pointer program (next_pointer + 1) in
       parse_assignment_operator new_program tokens assignment_name
-  | _ ->
+  | Some token ->
       let new_program =
         Program.with_error program
-          "Expected identifier after 'let' keyword in assignment statement"
+          ("Expected identifier after 'let' keyword in assignment statement, \
+            recieved: " ^ to_string token)
+      in
+      Program.with_pointer new_program
+        (Tokens.seek_delimiter tokens (Program.pointer new_program))
+  | None ->
+      let new_program =
+        Program.with_error program
+          "Missing identifier after 'let' keyword in assignment statement"
       in
       Program.with_pointer new_program
         (Tokens.seek_delimiter tokens (Program.pointer new_program))
@@ -112,8 +139,7 @@ let parse_statement program tokens current_token =
   let open Lexer in
   let open Token in
   match current_token with
-  | Keyword keyword_let when keyword_let == "let" ->
-      parse_assignment program tokens
+  | Keyword "let" -> parse_assignment program tokens
   | _ ->
       let new_program, expression = parse_expression program tokens in
       Program.with_statement new_program expression
@@ -146,3 +172,6 @@ let to_string program =
       (List.map statement_to_string (Program.statements program))
       ","
   ^ ")"
+
+let print_errors parsed =
+  print_string (Util.StringList.join (Program.errors parsed) "\n")
