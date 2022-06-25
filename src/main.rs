@@ -1,7 +1,7 @@
-use std::io;
-use std::io::Write;
-use std::io::stdout;
 use std::env;
+use std::io;
+use std::io::stdout;
+use std::io::Write;
 
 pub mod lexer;
 
@@ -12,7 +12,6 @@ fn main() {
 
     let mut args = env::args();
     let subcommand = args.nth(1).expect("Missing subcommand!");
-
 
     // io::stdin().read_line(&mut subcommand).expect("Failed to read from stdin");
 
@@ -29,7 +28,9 @@ fn rlpl() {
     loop {
         print!("> ");
         stdout().flush().expect("Failed to write to stdout");
-        io::stdin().read_line(&mut code).expect("rlpl: Failed to read from stdin");
+        io::stdin()
+            .read_line(&mut code)
+            .expect("rlpl: Failed to read from stdin");
         let tokens = lexer::tokenize(code.as_str());
         print!("{:?}", tokens);
     }
@@ -41,9 +42,11 @@ fn rppl() {
     loop {
         print!("> ");
         stdout().flush().expect("Failed to write to stdout");
-        io::stdin().read_line(&mut code).expect("rppl: Failed to read from stdin");
+        io::stdin()
+            .read_line(&mut code)
+            .expect("rppl: Failed to read from stdin");
         match code {
-            _ => println!("rppl: Failed to parse code from stdin")
+            _ => println!("rppl: Failed to parse code from stdin"),
         }
     }
 }
