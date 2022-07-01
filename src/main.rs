@@ -7,10 +7,6 @@ pub mod lexer;
 pub mod parser;
 
 fn main() {
-    let tokens = lexer::tokenize("let a = 1");
-    let program = parser::parse(tokens);
-    println!("PROGRAM: {:?}", program);
-
     let mut args = env::args();
     let subcommand = args.nth(1).expect("Missing subcommand!");
 
@@ -44,8 +40,8 @@ fn rppl() {
         io::stdin()
             .read_line(&mut code)
             .expect("rppl: Failed to read from stdin");
-        match code {
-            _ => println!("rppl: Failed to parse code from stdin"),
-        }
+        let tokens = lexer::tokenize(code.as_str());
+        let program = parser::parse(tokens);
+        print!("{:?}", program);
     }
 }
