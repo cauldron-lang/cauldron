@@ -1,7 +1,7 @@
 use regex::Regex;
 
-#[derive(Debug, PartialEq)]
-enum Token {
+#[derive(Debug, PartialEq, Clone)]
+pub enum Token {
     Operator(char),
     Delimiter(char),
     Integer(String),
@@ -10,33 +10,14 @@ enum Token {
     Illegal,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Tokens {
-    contents: Vec<Token>,
-}
-
-impl Tokens {
-    fn new() -> Self {
-        Self {
-            contents: Vec::new(),
-        }
-    }
-
-    fn from(tokens: Vec<Token>) -> Self {
-        Self { contents: tokens }
-    }
-
-    fn push(&mut self, token: Token) {
-        self.contents.push(token);
-    }
-}
+pub type Tokens = Vec<Token>;
 
 pub fn tokenize(str: &str) -> Tokens {
     let mut tokens = Tokens::new();
     let mut characters = str.chars().peekable();
-    let valid_integer = Regex::new("^[0-9]$").unwrap();
+    let valid_integer = Regex::new("^[0-9]+$").unwrap();
     let valid_alphanum = Regex::new("^[a-zA-Z0-9_]+$").unwrap();
-    let valid_keyword = Regex::new("^(let)$").unwrap();
+    let valid_keyword = Regex::new("^(let|in)$").unwrap();
     let valid_delimiter = Regex::new("^(;|\\(|\\))$").unwrap();
 
     loop {
@@ -110,6 +91,31 @@ mod tests {
             Token::Identifier(String::from("a")),
             Token::Identifier(String::from("b")),
             Token::Delimiter(')'),
+            Token::Identifier(String::from("c")),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn it_lexes_assignment_nested() {
+        let actual = tokenize("let a = let b = 123 in let c = 456 in add b c");
+        let expected = Tokens::from(vec![
+            Token::Keyword(String::from("let")),
+            Token::Identifier(String::from("a")),
+            Token::Operator('='),
+            Token::Keyword(String::from("let")),
+            Token::Identifier(String::from("b")),
+            Token::Operator('='),
+            Token::Integer(String::from("123")),
+            Token::Keyword(String::from("in")),
+            Token::Keyword(String::from("let")),
+            Token::Identifier(String::from("c")),
+            Token::Operator('='),
+            Token::Integer(String::from("456")),
+            Token::Keyword(String::from("in")),
+            Token::Identifier(String::from("add")),
+            Token::Identifier(String::from("b")),
             Token::Identifier(String::from("c")),
         ]);
 

@@ -4,16 +4,15 @@ use std::io::stdout;
 use std::io::Write;
 
 pub mod lexer;
+pub mod parser;
 
 fn main() {
-    // let mut subcommand = String::new();
-
-    rlpl();
+    let tokens = lexer::tokenize("let a = 1");
+    let program = parser::parse(tokens);
+    println!("PROGRAM: {:?}", program);
 
     let mut args = env::args();
     let subcommand = args.nth(1).expect("Missing subcommand!");
-
-    // io::stdin().read_line(&mut subcommand).expect("Failed to read from stdin");
 
     match subcommand.as_str() {
         "rlpl" => rlpl(),
