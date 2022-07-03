@@ -17,7 +17,7 @@ pub fn tokenize(str: &str) -> Tokens {
     let mut characters = str.chars().peekable();
     let valid_integer = Regex::new("^[0-9]+$").unwrap();
     let valid_alphanum = Regex::new("^[a-zA-Z0-9_]+$").unwrap();
-    let valid_keyword = Regex::new("^(let|in)$").unwrap();
+    let valid_keyword = Regex::new("^(if)$").unwrap();
     let valid_delimiter = Regex::new("^(,|;|\\(|\\)|\\{|\\}|\\|)$").unwrap();
     let valid_operator = Regex::new("^(\\+|=)$").unwrap();
 
@@ -156,6 +156,25 @@ mod tests {
             Token::Identifier(String::from("a")),
             Token::Operator('+'),
             Token::Identifier(String::from("b")),
+            Token::Delimiter('}'),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn it_lexes_conditional_statement() {
+        let actual = tokenize("if (1) { print(1) }");
+        let expected = Tokens::from(vec![
+            Token::Keyword(String::from("if")),
+            Token::Delimiter('('),
+            Token::Integer(String::from("1")),
+            Token::Delimiter(')'),
+            Token::Delimiter('{'),
+            Token::Identifier(String::from("print")),
+            Token::Delimiter('('),
+            Token::Integer(String::from("1")),
+            Token::Delimiter(')'),
             Token::Delimiter('}'),
         ]);
 
