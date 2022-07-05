@@ -1,18 +1,6 @@
-use std::slice::Iter;
+use std::{slice::Iter, thread::current};
 
 use crate::lexer;
-
-#[derive(Debug, PartialEq, Clone)]
-enum Token {
-    Integer(String),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-enum Statement {
-    Assignment(String, Box<Statement>),
-    Expression(Token),
-    InvalidExpression,
-}
 
 #[derive(Debug, PartialEq, Clone)]
 struct Error {
@@ -20,14 +8,40 @@ struct Error {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+enum Expression {
+    Integer(String),
+    Invalid(Error),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum Condition {
+    Expression(Expression),
+    Invalid(Error),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum Block {
+    Statements(Vec<Statement>),
+    Invalid(Error),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+enum Statement {
+    Assignment(String, Expression),
+    Block(Block),
+    Expression(Expression),
+    Conditional(Condition, Block),
+    Invalid(Error),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Program {
     statements: Vec<Statement>,
-    errors: Vec<Error>,
 }
 
 impl Program {
-    fn new(statements: Vec<Statement>, errors: Vec<Error>) -> Self {
-        Self { statements, errors }
+    fn new(statements: Vec<Statement>) -> Self {
+        Self { statements }
     }
 }
 
@@ -46,98 +60,137 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_statements(&mut self) {
+    fn parse_statements(&mut self) -> Vec<Statement> {
+        let mut statements: Vec<Statement> = Vec::new();
+
         loop {
             match self.tokens.next() {
-                Some(current_token) => self.parse_statement(current_token),
+                Some(current_token) => statements.push(self.parse_statement(current_token)),
                 None => break,
             };
         }
+
+        statements
     }
 
-    fn parse_statement(&mut self, current_token: &lexer::Token) {
+    fn parse_statement(&mut self, current_token: &lexer::Token) -> Statement {
         let next_token = self.tokens.next();
-
-        match current_token {
-            lexer::Token::Keyword(keyword) if keyword == "let" => {
-                self.parse_assignment(next_token);
-            }
-            _ => {
-                let expression = self.parse_expression(next_token);
-                self.statements.push(expression);
-            }
-        };
-    }
-
-    fn parse_assignment(&mut self, current_token: Option<&lexer::Token>) {
-        match current_token {
-            Some(lexer::Token::Identifier(identifier)) => {
-                self.parse_assignment_operator(identifier.clone())
-            }
-            Some(token) => self.error(format!(
-                "Expected identifier after 'let' keyword in assignment statement recieved: {:?}",
-                token
-            )),
-            None => self.error(String::from(
-                "Missing identifier after 'let' keyword in assignment statement",
-            )),
-        };
-    }
-
-    fn parse_assignment_operator(&mut self, identifier: String) {
-        match self.tokens.next() {
-            Some(lexer::Token::Operator('=')) => {
+        let statement = match (current_token, next_token) {
+            (lexer::Token::Identifier(name), Some(lexer::Token::Operator('='))) => {
                 let next_token = self.tokens.next();
 
-                self.parse_assignment_body(identifier, next_token);
+                self.parse_assignment_statement(name.clone(), next_token)
             }
-            Some(token) => self.error(format!(
-                "Expected assignment operator after identifier in assignment \
-            statement, recieved: {:?}",
-                token
+            (lexer::Token::Delimiter('{'), _) => self.parse_block_statement(next_token),
+            (lexer::Token::Keyword(_if), _) if _if == "if" => self.parse_if_statement(next_token),
+            _ => Statement::Expression(self.parse_expression(next_token)),
+        };
+
+        statement
+    }
+
+    fn parse_block_statement(&mut self, current_token: Option<&lexer::Token>) -> Statement {
+        Statement::Block(self.parse_block(current_token))
+    }
+
+    fn parse_block(&mut self, current_token: Option<&lexer::Token>) -> Block {
+        let mut statements: Vec<Statement> = Vec::new();
+        let mut token = current_token;
+
+        loop {
+            match token {
+                Some(lexer::Token::Delimiter('}')) => break,
+                Some(lexer::Token::Delimiter(';')) => {}
+                Some(token) => {
+                    let statement = self.parse_statement(token);
+                    statements.push(statement);
+                }
+                None => {
+                    statements.push(self.error_statement(String::from("Missing remaining block")));
+                    break;
+                }
+            };
+
+            token = self.tokens.next();
+        }
+
+        Block::Statements(statements)
+    }
+
+    fn parse_if_statement(&mut self, current_token: Option<&lexer::Token>) -> Statement {
+        match current_token {
+            Some(lexer::Token::Delimiter('(')) => {
+                let next_token = self.tokens.next();
+                let condition = Condition::Expression(self.parse_expression(next_token));
+                let next_token = self.tokens.next();
+                let consequence = match next_token {
+                    Some(lexer::Token::Delimiter('{')) => {
+                        let next_token = self.tokens.next();
+
+                        self.parse_block(next_token)
+                    }
+                    Some(invalid_token) => self.error_block(format!(
+                        "Invalid token while parsing 'if' statement's consequence: {:?}",
+                        invalid_token
+                    )),
+                    None => self.error_block(String::from("Missing 'if' statement's consequence")),
+                };
+
+                Statement::Conditional(condition, consequence)
+            }
+            Some(invalid_token) => self.error_statement(format!(
+                "Invalid token while parsing 'if' statement's condition: {:?}",
+                invalid_token
             )),
-            None => self.error(String::from(
-                "Missing assignment operator after identifier in assignment statement",
+            None => self.error_statement(String::from(
+                "Missing condition and consequence of 'if' statement",
             )),
         }
     }
 
-    fn parse_assignment_body(&mut self, identifier: String, current_token: Option<&lexer::Token>) {
+    fn parse_assignment_statement(
+        &mut self,
+        identifier: String,
+        current_token: Option<&lexer::Token>,
+    ) -> Statement {
         match current_token {
-            None | Some(lexer::Token::Delimiter(_)) => self.error(String::from(
+            None => self.error_statement(String::from(
                 "Expected expression after assignment operator in assignment statement",
             )),
             _ => {
                 let expression = self.parse_expression(current_token);
-                let assignment_statement = Statement::Assignment(identifier, Box::new(expression));
-
-                self.statements.push(assignment_statement);
+                Statement::Assignment(identifier, expression)
             }
         }
     }
 
-    fn parse_expression(&mut self, current_token: Option<&lexer::Token>) -> Statement {
+    fn parse_expression(&mut self, current_token: Option<&lexer::Token>) -> Expression {
         match current_token {
-            Some(lexer::Token::Integer(integer)) => {
-                Statement::Expression(Token::Integer(integer.clone()))
-            }
-            Some(token) => {
-                self.error(format!(
-                    "Invalid token while parsing expression: {:?}",
-                    token
-                ));
-                Statement::InvalidExpression
-            }
-            None => {
-                self.error(String::from("Missing token while parsing expression"));
-                Statement::InvalidExpression
-            }
+            Some(lexer::Token::Integer(integer)) => Expression::Integer(integer.clone()),
+            Some(token) => self.error_expression(format!(
+                "Invalid token while parsing expression: {:?}",
+                token
+            )),
+            None => self.error_expression(String::from("Missing token while parsing expression")),
         }
     }
 
-    fn error(&mut self, message: String) {
-        self.errors.push(Error { message });
+    fn error_statement(&mut self, message: String) -> Statement {
         self.seek_delimiter();
+
+        Statement::Invalid(Error { message })
+    }
+
+    fn error_block(&mut self, message: String) -> Block {
+        self.seek_delimiter();
+
+        Block::Invalid(Error { message })
+    }
+
+    fn error_expression(&mut self, message: String) -> Expression {
+        self.seek_delimiter();
+
+        Expression::Invalid(Error { message })
     }
 
     fn seek_delimiter(&mut self) {
@@ -153,25 +206,36 @@ impl<'a> Parser<'a> {
 
 pub fn parse(tokens: lexer::Tokens) -> Program {
     let mut parser = Parser::new(tokens.iter());
-    parser.parse_statements();
+    let statements = parser.parse_statements();
 
-    Program::new(parser.statements, parser.errors)
+    Program::new(statements)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, Program, Statement, Token};
-    use crate::lexer::tokenize;
+    use super::{parse, Block, Program, Statement};
+    use crate::{lexer::tokenize, parser::Expression};
 
     #[test]
     fn it_parses_simple_assignment() {
-        let actual = parse(tokenize("let a = 1"));
-        let statement = Statement::Assignment(
-            String::from("a"),
-            Box::new(Statement::Expression(Token::Integer(String::from("1")))),
-        );
-        let expected = Program::new(vec![statement], Vec::new());
+        let actual = parse(tokenize("a = 1"));
+        let statement =
+            Statement::Assignment(String::from("a"), Expression::Integer(String::from("1")));
+        let expected = Program::new(vec![statement]);
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn it_parses_simple_blocks() {
+        let actual = parse(tokenize("{ a = 1 }"));
+        let actual_with_semicolon = parse(tokenize("{ a = 1; }"));
+        let assignment_statement =
+            Statement::Assignment(String::from("a"), Expression::Integer(String::from("1")));
+        let block_statement = Statement::Block(Block::Statements(vec![assignment_statement]));
+        let expected = Program::new(vec![block_statement]);
+
+        assert_eq!(actual, expected);
+        assert_eq!(actual_with_semicolon, expected);
     }
 }
