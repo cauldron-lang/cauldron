@@ -1,4 +1,4 @@
-use std::{slice::Iter, thread::current};
+use std::slice::Iter;
 
 use crate::lexer;
 
@@ -8,15 +8,20 @@ struct Error {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+enum PrefixOperator {
+    Minus,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 enum Expression {
     Integer(String),
+    Prefix(PrefixOperator, Box<Expression>),
     Invalid(Error),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 enum Condition {
     Expression(Expression),
-    Invalid(Error),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -46,18 +51,12 @@ impl Program {
 }
 
 pub struct Parser<'a> {
-    errors: Vec<Error>,
-    statements: Vec<Statement>,
     tokens: Iter<'a, lexer::Token>,
 }
 
 impl<'a> Parser<'a> {
     fn new(tokens: Iter<'a, lexer::Token>) -> Self {
-        Self {
-            errors: Vec::new(),
-            statements: Vec::new(),
-            tokens: tokens,
-        }
+        Self { tokens: tokens }
     }
 
     fn parse_statements(&mut self) -> Vec<Statement> {
@@ -83,6 +82,9 @@ impl<'a> Parser<'a> {
             }
             (lexer::Token::Delimiter('{'), _) => self.parse_block_statement(next_token),
             (lexer::Token::Keyword(_if), _) if _if == "if" => self.parse_if_statement(next_token),
+            (lexer::Token::Operator('-'), _) => Statement::Expression(
+                self.parse_prefix_expression(PrefixOperator::Minus, next_token),
+            ),
             _ => Statement::Expression(self.parse_expression(next_token)),
         };
 
@@ -164,6 +166,17 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_prefix_expression(
+        &mut self,
+        prefix_operator: PrefixOperator,
+        current_token: Option<&lexer::Token>,
+    ) -> Expression {
+        Expression::Prefix(
+            prefix_operator,
+            Box::new(self.parse_expression(current_token)),
+        )
+    }
+
     fn parse_expression(&mut self, current_token: Option<&lexer::Token>) -> Expression {
         match current_token {
             Some(lexer::Token::Integer(integer)) => Expression::Integer(integer.clone()),
@@ -214,7 +227,22 @@ pub fn parse(tokens: lexer::Tokens) -> Program {
 #[cfg(test)]
 mod tests {
     use super::{parse, Block, Program, Statement};
-    use crate::{lexer::tokenize, parser::Expression};
+    use crate::{
+        lexer::tokenize,
+        parser::{Expression, PrefixOperator},
+    };
+
+    #[test]
+    fn it_parses_simple_prefix_operator_expressions() {
+        let actual = parse(tokenize("-100"));
+        let statement = Statement::Expression(Expression::Prefix(
+            PrefixOperator::Minus,
+            Box::new(Expression::Integer(String::from("100"))),
+        ));
+        let expected = Program::new(vec![statement]);
+
+        assert_eq!(actual, expected);
+    }
 
     #[test]
     fn it_parses_simple_assignment() {

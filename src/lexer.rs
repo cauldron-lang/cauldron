@@ -19,7 +19,7 @@ pub fn tokenize(str: &str) -> Tokens {
     let valid_alphanum = Regex::new("^[a-zA-Z0-9_]+$").unwrap();
     let valid_keyword = Regex::new("^(if)$").unwrap();
     let valid_delimiter = Regex::new("^(,|;|\\(|\\)|\\{|\\}|\\|)$").unwrap();
-    let valid_operator = Regex::new("^(\\+|=)$").unwrap();
+    let valid_operator = Regex::new("^(\\+|=|-)$").unwrap();
 
     loop {
         let current = characters.next();
@@ -176,6 +176,17 @@ mod tests {
             Token::Integer(String::from("1")),
             Token::Delimiter(')'),
             Token::Delimiter('}'),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn it_lexes_simple_prefix_expressions() {
+        let actual = tokenize("-100");
+        let expected = Tokens::from(vec![
+            Token::Operator('-'),
+            Token::Integer(String::from("100")),
         ]);
 
         assert_eq!(actual, expected);
