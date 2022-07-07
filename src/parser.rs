@@ -35,7 +35,9 @@ enum InfixOperator {
 
 #[derive(Debug, PartialEq, Clone)]
 enum Expression {
+    Call(Box<Expression>, Vec<Expression>),
     Integer(String),
+    Identifier(String),
     Boolean(bool),
     Prefix(PrefixOperator, Box<Expression>),
     Infix(InfixOperator, Box<Expression>, Box<Expression>),
@@ -211,7 +213,8 @@ impl<'a> Parser<'a> {
 
         match token {
             Some(&&lexer::Token::Operator('-')) => PRECEDENCE_SUM,
-            _ => 0,
+            Some(&&lexer::Token::Delimiter('(')) => PRECEDENCE_CALL,
+            _ => PRECEDENCE_LOWEST,
         }
     }
 
@@ -234,6 +237,56 @@ impl<'a> Parser<'a> {
             Box::new(left_expression),
             Box::new(right_expression),
         )
+    }
+
+    fn parse_call_expression(&mut self, block_identifier: Expression) -> Expression {
+        let peek_token = self.tokens.peek();
+        let mut arguments: Vec<Expression> = Vec::new();
+
+        if peek_token == Some(&&lexer::Token::Delimiter(')')) {
+            self.tokens.next();
+            return Expression::Call(Box::new(block_identifier), arguments);
+        }
+
+        let current_token = self.tokens.next();
+
+        match current_token {
+            Some(token) => {
+                arguments.push(self.parse_expression_with_precedence(token, PRECEDENCE_LOWEST));
+
+                while self.tokens.peek() == Some(&&lexer::Token::Delimiter(',')) {
+                    self.tokens.next();
+                    let token_after_comma = self.tokens.next();
+
+                    match token_after_comma {
+                        Some(token_after_comma) => {
+                            arguments.push(self.parse_expression_with_precedence(
+                                token_after_comma,
+                                PRECEDENCE_LOWEST,
+                            ));
+                        }
+                        None => {
+                            return self.error_expression(String::from(
+                                "Unexpected end of arguments in call",
+                            ))
+                        }
+                    }
+                }
+
+                let closing_brace = self.tokens.next();
+
+                if closing_brace != Some(&&lexer::Token::Delimiter(')')) {
+                    return self.error_expression(String::from(
+                        "Missing closing bracket when calling block",
+                    ));
+                }
+
+                Expression::Call(Box::new(block_identifier), arguments)
+            }
+            None => {
+                self.error_expression(String::from("Error parsing arguments when calling block"))
+            }
+        }
     }
 
     fn is_peek_semicolon(&mut self) -> bool {
@@ -263,7 +316,7 @@ impl<'a> Parser<'a> {
             lexer::Token::Integer(integer) => Expression::Integer(integer.clone()),
             lexer::Token::Operator(_) => todo!(),
             lexer::Token::Delimiter(_) => todo!(),
-            lexer::Token::Identifier(_) => todo!(),
+            lexer::Token::Identifier(identifier) => Expression::Identifier(identifier.clone()),
             lexer::Token::Keyword(_) => todo!(),
             lexer::Token::Boolean(boolean) => Expression::Boolean(*boolean),
             lexer::Token::Illegal => todo!(),
@@ -277,6 +330,10 @@ impl<'a> Parser<'a> {
                     self.tokens.next();
                     left_expression =
                         self.parse_infix_expression(left_expression, InfixOperator::Minus);
+                }
+                Some(&&lexer::Token::Delimiter('(')) => {
+                    self.tokens.next();
+                    left_expression = self.parse_call_expression(left_expression);
                 }
                 _ => break,
             };
@@ -381,6 +438,24 @@ mod tests {
         let expected = Program::new(vec![statement]);
 
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn it_parses_calling_block_expressions() {
+        let expectations = [(
+            "print(1)",
+            Expression::Call(
+                Box::new(Expression::Identifier(String::from("print"))),
+                vec![Expression::Integer(String::from("1"))],
+            ),
+        )];
+
+        for (code, expression) in expectations {
+            let actual = parse(tokenize(code));
+            let expected = Program::new(vec![Statement::Expression(expression)]);
+
+            assert_eq!(actual, expected);
+        }
     }
 
     #[test]
