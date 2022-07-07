@@ -5,6 +5,7 @@ pub enum Token {
     Operator(char),
     Delimiter(char),
     Integer(String),
+    Boolean(bool),
     Identifier(String),
     Keyword(String),
     Illegal,
@@ -19,7 +20,8 @@ pub fn tokenize(str: &str) -> Tokens {
     let valid_alphanum = Regex::new("^[a-zA-Z0-9_]+$").unwrap();
     let valid_keyword = Regex::new("^(if)$").unwrap();
     let valid_delimiter = Regex::new("^(,|;|\\(|\\)|\\{|\\}|\\|)$").unwrap();
-    let valid_operator = Regex::new("^(\\+|=|-)$").unwrap();
+    let valid_operator = Regex::new("^(\\+|=|-|!)$").unwrap();
+    let valid_boolean = Regex::new("^(true|false)$").unwrap();
 
     loop {
         let current = characters.next();
@@ -55,6 +57,9 @@ pub fn tokenize(str: &str) -> Tokens {
                     }
                     keyword if valid_keyword.is_match(keyword) => {
                         tokens.push(Token::Keyword(String::from(keyword)))
+                    }
+                    boolean if valid_boolean.is_match(boolean) => {
+                        tokens.push(Token::Boolean(boolean == "true"))
                     }
                     variable => tokens.push(Token::Identifier(String::from(variable))),
                 }
@@ -183,12 +188,19 @@ mod tests {
 
     #[test]
     fn it_lexes_simple_prefix_expressions() {
-        let actual = tokenize("-100");
-        let expected = Tokens::from(vec![
-            Token::Operator('-'),
-            Token::Integer(String::from("100")),
-        ]);
+        let expectations = [
+            (
+                "-100",
+                vec![Token::Operator('-'), Token::Integer(String::from("100"))],
+            ),
+            ("!false", vec![Token::Operator('!'), Token::Boolean(false)]),
+        ];
 
-        assert_eq!(actual, expected);
+        for (code, tokens) in expectations {
+            let actual = tokenize(code);
+            let expected = Tokens::from(tokens);
+
+            assert_eq!(actual, expected);
+        }
     }
 }

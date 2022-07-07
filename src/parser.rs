@@ -2,6 +2,21 @@ use std::{iter::Peekable, slice::Iter};
 
 use crate::lexer;
 
+// LOWEST
+// EQUALS ==
+// LESSGREATER > or <
+// SUM + or -
+// PRODUCT *
+// PREFIX -X or !X
+// CALL my_function(X)
+const PRECEDENCE_LOWEST: u8 = 0;
+const PRECEDENCE_EQUALS: u8 = 1;
+const PRECEDENCE_LESSGREATER: u8 = 2;
+const PRECEDENCE_SUM: u8 = 3;
+const PRECEDENCE_PRODUCT: u8 = 4;
+const PRECEDENCE_PREFIX: u8 = 5;
+const PRECEDENCE_CALL: u8 = 6;
+
 #[derive(Debug, PartialEq, Clone)]
 struct Error {
     message: String,
@@ -10,6 +25,7 @@ struct Error {
 #[derive(Debug, PartialEq, Clone)]
 enum PrefixOperator {
     Minus,
+    Bang,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -20,6 +36,7 @@ enum InfixOperator {
 #[derive(Debug, PartialEq, Clone)]
 enum Expression {
     Integer(String),
+    Boolean(bool),
     Prefix(PrefixOperator, Box<Expression>),
     Infix(InfixOperator, Box<Expression>, Box<Expression>),
     Invalid(Error),
@@ -183,27 +200,17 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_prefix_expression(
-        &mut self,
-        prefix_operator: PrefixOperator,
-        current_token: Option<&lexer::Token>,
-    ) -> Expression {
-        Expression::Prefix(
-            prefix_operator,
-            Box::new(self.parse_expression(current_token)),
-        )
+    fn get_precedence(&self, infix_operator: InfixOperator) -> u8 {
+        match infix_operator {
+            InfixOperator::Minus => PRECEDENCE_SUM,
+        }
     }
 
-    fn get_precedence(&self, infix_operator: InfixOperator) -> u8 {
-        // LOWEST
-        // EQUALS
-        // LESSGREATER
-        // SUM
-        // PRODUCT
-        // PREFIX
-        // CALL
-        match infix_operator {
-            InfixOperator::Minus => 3,
+    fn peek_precedence(&mut self) -> u8 {
+        let token = self.tokens.peek();
+
+        match token {
+            Some(&&lexer::Token::Operator('-')) => PRECEDENCE_SUM,
             _ => 0,
         }
     }
@@ -233,36 +240,32 @@ impl<'a> Parser<'a> {
         self.tokens.peek() != Some(&&lexer::Token::Delimiter(';'))
     }
 
-    fn peek_precedence(&mut self) -> u8 {
-        let token = self.tokens.peek();
-
-        match token {
-            Some(&&lexer::Token::Operator('-')) => 3,
-            _ => 0,
-        }
-    }
-
     fn parse_expression_with_precedence(
         &mut self,
         current_token: &lexer::Token,
         precedence: u8,
     ) -> Expression {
         let mut left_expression = match current_token {
-            lexer::Token::Operator('-') => {
+            lexer::Token::Operator(operator) if *operator == '-' || *operator == '!' => {
                 let next_token = self.tokens.next();
                 let right_expression = match next_token {
-                    Some(token) => self.parse_expression_with_precedence(token, 3),
+                    Some(token) => self.parse_expression_with_precedence(token, PRECEDENCE_PREFIX),
                     None => self
                         .error_expression(String::from("Missing token while parsing expression")),
                 };
 
-                Expression::Prefix(PrefixOperator::Minus, Box::new(right_expression))
+                if *operator == '-' {
+                    return Expression::Prefix(PrefixOperator::Minus, Box::new(right_expression));
+                }
+
+                Expression::Prefix(PrefixOperator::Bang, Box::new(right_expression))
             }
             lexer::Token::Integer(integer) => Expression::Integer(integer.clone()),
             lexer::Token::Operator(_) => todo!(),
             lexer::Token::Delimiter(_) => todo!(),
             lexer::Token::Identifier(_) => todo!(),
             lexer::Token::Keyword(_) => todo!(),
+            lexer::Token::Boolean(boolean) => Expression::Boolean(*boolean),
             lexer::Token::Illegal => todo!(),
         };
 
@@ -334,15 +337,37 @@ mod tests {
     };
 
     #[test]
-    fn it_parses_simple_prefix_operator_expressions() {
-        let actual = parse(tokenize("-100"));
-        let statement = Statement::Expression(Expression::Prefix(
-            PrefixOperator::Minus,
-            Box::new(Expression::Integer(String::from("100"))),
-        ));
-        let expected = Program::new(vec![statement]);
+    fn it_parses_prefix_operator_expressions() {
+        let expectations = [
+            (
+                "-100",
+                Expression::Prefix(
+                    PrefixOperator::Minus,
+                    Box::new(Expression::Integer(String::from("100"))),
+                ),
+            ),
+            (
+                "!false",
+                Expression::Prefix(PrefixOperator::Bang, Box::new(Expression::Boolean(false))),
+            ),
+            (
+                "!!true",
+                Expression::Prefix(
+                    PrefixOperator::Bang,
+                    Box::new(Expression::Prefix(
+                        PrefixOperator::Bang,
+                        Box::new(Expression::Boolean(true)),
+                    )),
+                ),
+            ),
+        ];
 
-        assert_eq!(actual, expected);
+        for (code, expression) in expectations {
+            let actual = parse(tokenize(code));
+            let expected = Program::new(vec![Statement::Expression(expression)]);
+
+            assert_eq!(actual, expected);
+        }
     }
 
     #[test]
