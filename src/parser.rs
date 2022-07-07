@@ -1,4 +1,4 @@
-use std::slice::Iter;
+use std::{iter::Peekable, slice::Iter};
 
 use crate::lexer;
 
@@ -12,10 +12,16 @@ enum PrefixOperator {
     Minus,
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum InfixOperator {
+    Minus,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 enum Expression {
     Integer(String),
     Prefix(PrefixOperator, Box<Expression>),
+    Infix(InfixOperator, Box<Expression>, Box<Expression>),
     Invalid(Error),
 }
 
@@ -51,12 +57,14 @@ impl Program {
 }
 
 pub struct Parser<'a> {
-    tokens: Iter<'a, lexer::Token>,
+    tokens: Peekable<Iter<'a, lexer::Token>>,
 }
 
 impl<'a> Parser<'a> {
     fn new(tokens: Iter<'a, lexer::Token>) -> Self {
-        Self { tokens: tokens }
+        Self {
+            tokens: tokens.peekable(),
+        }
     }
 
     fn parse_statements(&mut self) -> Vec<Statement> {
@@ -73,19 +81,28 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_statement(&mut self, current_token: &lexer::Token) -> Statement {
-        let next_token = self.tokens.next();
-        let statement = match (current_token, next_token) {
-            (lexer::Token::Identifier(name), Some(lexer::Token::Operator('='))) => {
+        let peek_token = self.tokens.peek();
+        let statement = match (current_token, peek_token) {
+            (lexer::Token::Identifier(name), Some(&&lexer::Token::Operator('='))) => {
+                self.tokens.next();
                 let next_token = self.tokens.next();
 
                 self.parse_assignment_statement(name.clone(), next_token)
             }
-            (lexer::Token::Delimiter('{'), _) => self.parse_block_statement(next_token),
-            (lexer::Token::Keyword(_if), _) if _if == "if" => self.parse_if_statement(next_token),
-            (lexer::Token::Operator('-'), _) => Statement::Expression(
-                self.parse_prefix_expression(PrefixOperator::Minus, next_token),
-            ),
-            _ => Statement::Expression(self.parse_expression(next_token)),
+            (lexer::Token::Delimiter('{'), _) => {
+                let next_token = self.tokens.next();
+
+                self.parse_block_statement(next_token)
+            }
+            (lexer::Token::Keyword(_if), _) if _if == "if" => {
+                let next_token = self.tokens.next();
+
+                self.parse_if_statement(next_token)
+            }
+            // (lexer::Token::Operator('-'), _) => Statement::Expression(
+            //     self.parse_prefix_expression(PrefixOperator::Minus, next_token),
+            // ),
+            _ => Statement::Expression(self.parse_expression(Some(current_token))),
         };
 
         statement
@@ -177,13 +194,97 @@ impl<'a> Parser<'a> {
         )
     }
 
+    fn get_precedence(&self, infix_operator: InfixOperator) -> u8 {
+        // LOWEST
+        // EQUALS
+        // LESSGREATER
+        // SUM
+        // PRODUCT
+        // PREFIX
+        // CALL
+        match infix_operator {
+            InfixOperator::Minus => 3,
+            _ => 0,
+        }
+    }
+
+    fn parse_infix_expression(
+        &mut self,
+        left_expression: Expression,
+        infix_operator: InfixOperator,
+    ) -> Expression {
+        let precedence = self.get_precedence(infix_operator);
+        let next_token = self.tokens.next();
+        let right_expression = match next_token {
+            Some(token) => self.parse_expression_with_precedence(token, precedence),
+            None => {
+                self.error_expression(String::from("Missing token while parsing infix expression"))
+            }
+        };
+
+        Expression::Infix(
+            infix_operator,
+            Box::new(left_expression),
+            Box::new(right_expression),
+        )
+    }
+
+    fn is_peek_semicolon(&mut self) -> bool {
+        self.tokens.peek() != Some(&&lexer::Token::Delimiter(';'))
+    }
+
+    fn peek_precedence(&mut self) -> u8 {
+        let token = self.tokens.peek();
+
+        match token {
+            Some(&&lexer::Token::Operator('-')) => 3,
+            _ => 0,
+        }
+    }
+
+    fn parse_expression_with_precedence(
+        &mut self,
+        current_token: &lexer::Token,
+        precedence: u8,
+    ) -> Expression {
+        let mut left_expression = match current_token {
+            lexer::Token::Operator('-') => {
+                let next_token = self.tokens.next();
+                let right_expression = match next_token {
+                    Some(token) => self.parse_expression_with_precedence(token, 3),
+                    None => self
+                        .error_expression(String::from("Missing token while parsing expression")),
+                };
+
+                Expression::Prefix(PrefixOperator::Minus, Box::new(right_expression))
+            }
+            lexer::Token::Integer(integer) => Expression::Integer(integer.clone()),
+            lexer::Token::Operator(_) => todo!(),
+            lexer::Token::Delimiter(_) => todo!(),
+            lexer::Token::Identifier(_) => todo!(),
+            lexer::Token::Keyword(_) => todo!(),
+            lexer::Token::Illegal => todo!(),
+        };
+
+        while self.is_peek_semicolon() && precedence < self.peek_precedence() {
+            let peek_token = self.tokens.peek();
+
+            match peek_token {
+                Some(&&lexer::Token::Operator('-')) => {
+                    self.tokens.next();
+                    left_expression =
+                        self.parse_infix_expression(left_expression, InfixOperator::Minus);
+                }
+                _ => break,
+            };
+        }
+
+        left_expression
+    }
+
     fn parse_expression(&mut self, current_token: Option<&lexer::Token>) -> Expression {
         match current_token {
-            Some(lexer::Token::Integer(integer)) => Expression::Integer(integer.clone()),
-            Some(token) => self.error_expression(format!(
-                "Invalid token while parsing expression: {:?}",
-                token
-            )),
+            Some(token) => self.parse_expression_with_precedence(token, 0),
             None => self.error_expression(String::from("Missing token while parsing expression")),
         }
     }
@@ -229,7 +330,7 @@ mod tests {
     use super::{parse, Block, Program, Statement};
     use crate::{
         lexer::tokenize,
-        parser::{Expression, PrefixOperator},
+        parser::{Expression, InfixOperator, PrefixOperator},
     };
 
     #[test]
@@ -238,6 +339,19 @@ mod tests {
         let statement = Statement::Expression(Expression::Prefix(
             PrefixOperator::Minus,
             Box::new(Expression::Integer(String::from("100"))),
+        ));
+        let expected = Program::new(vec![statement]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn it_parses_simple_infix_operator_expressions() {
+        let actual = parse(tokenize("100 - 50"));
+        let statement = Statement::Expression(Expression::Infix(
+            InfixOperator::Minus,
+            Box::new(Expression::Integer(String::from("100"))),
+            Box::new(Expression::Integer(String::from("50"))),
         ));
         let expected = Program::new(vec![statement]);
 
