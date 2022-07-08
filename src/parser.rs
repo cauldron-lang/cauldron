@@ -18,23 +18,23 @@ const PRECEDENCE_PREFIX: u8 = 5;
 const PRECEDENCE_CALL: u8 = 6;
 
 #[derive(Debug, PartialEq, Clone)]
-struct Error {
+pub struct Error {
     message: String,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum PrefixOperator {
+pub enum PrefixOperator {
     Minus,
     Bang,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-enum InfixOperator {
+pub enum InfixOperator {
     Minus,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum Expression {
+pub enum Expression {
     Call(Box<Expression>, Vec<Expression>),
     Integer(String),
     Identifier(String),
@@ -45,18 +45,18 @@ enum Expression {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum Condition {
+pub enum Condition {
     Expression(Expression),
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum Block {
+pub enum Block {
     Statements(Vec<Statement>),
     Invalid(Error),
 }
 
 #[derive(Debug, PartialEq, Clone)]
-enum Statement {
+pub enum Statement {
     Assignment(String, Expression),
     Block(Block),
     Expression(Expression),
@@ -66,7 +66,7 @@ enum Statement {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Program {
-    statements: Vec<Statement>,
+    pub statements: Vec<Statement>,
 }
 
 impl Program {
