@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::parser::{self, PrefixOperator};
+use crate::parser::{self, InfixOperator, PrefixOperator};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
@@ -48,7 +48,23 @@ impl Environment {
                     },
                 }
             }
-            parser::Expression::Infix(_, _, _) => todo!(),
+            parser::Expression::Infix(infix_operator, left_expression, right_expression) => {
+                let left_object = self.eval_expression(*left_expression);
+                let right_object = self.eval_expression(*right_expression);
+
+                match (left_object.clone(), right_object.clone()) {
+                    (Object::Integer(left_integer), Object::Integer(right_integer)) => {
+                        match infix_operator {
+                            InfixOperator::Minus => Object::Integer(left_integer - right_integer),
+                            InfixOperator::Plus => Object::Integer(left_integer + right_integer),
+                        }
+                    }
+                    _ => Object::Error(format!(
+                        "Cannot subtract '{:?}' from '{:?}'",
+                        left_object, right_object
+                    )),
+                }
+            }
             parser::Expression::Invalid(_) => todo!(),
         }
     }
@@ -94,6 +110,10 @@ mod tests {
             ("!true", Object::Boolean(false)),
             ("!false", Object::Boolean(true)),
             ("!!true", Object::Boolean(true)),
+            ("1 - 1", Object::Integer(0)),
+            ("1 + 1", Object::Integer(2)),
+            ("5 - 1 - 2", Object::Integer(2)),
+            ("1 + 1 + 1 + 1 + 1 + 1 + 1 + 1", Object::Integer(8)),
         ];
 
         for (code, expected) in expectations {

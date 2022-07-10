@@ -31,6 +31,7 @@ pub enum PrefixOperator {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum InfixOperator {
     Minus,
+    Plus,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -205,6 +206,7 @@ impl<'a> Parser<'a> {
     fn get_precedence(&self, infix_operator: InfixOperator) -> u8 {
         match infix_operator {
             InfixOperator::Minus => PRECEDENCE_SUM,
+            InfixOperator::Plus => PRECEDENCE_SUM,
         }
     }
 
@@ -212,7 +214,9 @@ impl<'a> Parser<'a> {
         let token = self.tokens.peek();
 
         match token {
-            Some(&&lexer::Token::Operator('-')) => PRECEDENCE_SUM,
+            Some(&&lexer::Token::Operator('-')) | Some(&&lexer::Token::Operator('+')) => {
+                PRECEDENCE_SUM
+            }
             Some(&&lexer::Token::Delimiter('(')) => PRECEDENCE_CALL,
             _ => PRECEDENCE_LOWEST,
         }
@@ -331,6 +335,11 @@ impl<'a> Parser<'a> {
                     left_expression =
                         self.parse_infix_expression(left_expression, InfixOperator::Minus);
                 }
+                Some(&&lexer::Token::Operator('+')) => {
+                    self.tokens.next();
+                    left_expression =
+                        self.parse_infix_expression(left_expression, InfixOperator::Plus)
+                }
                 Some(&&lexer::Token::Delimiter('(')) => {
                     self.tokens.next();
                     left_expression = self.parse_call_expression(left_expression);
@@ -394,7 +403,7 @@ mod tests {
     };
 
     #[test]
-    fn it_parses_prefix_operator_expressions() {
+    fn it_parses_expressions() {
         let expectations = [
             (
                 "-100",
@@ -417,6 +426,22 @@ mod tests {
                     )),
                 ),
             ),
+            (
+                "100 - 50",
+                Expression::Infix(
+                    InfixOperator::Minus,
+                    Box::new(Expression::Integer(String::from("100"))),
+                    Box::new(Expression::Integer(String::from("50"))),
+                ),
+            ),
+            (
+                "100 + 50",
+                Expression::Infix(
+                    InfixOperator::Plus,
+                    Box::new(Expression::Integer(String::from("100"))),
+                    Box::new(Expression::Integer(String::from("50"))),
+                ),
+            ),
         ];
 
         for (code, expression) in expectations {
@@ -425,19 +450,6 @@ mod tests {
 
             assert_eq!(actual, expected);
         }
-    }
-
-    #[test]
-    fn it_parses_simple_infix_operator_expressions() {
-        let actual = parse(tokenize("100 - 50"));
-        let statement = Statement::Expression(Expression::Infix(
-            InfixOperator::Minus,
-            Box::new(Expression::Integer(String::from("100"))),
-            Box::new(Expression::Integer(String::from("50"))),
-        ));
-        let expected = Program::new(vec![statement]);
-
-        assert_eq!(actual, expected);
     }
 
     #[test]
