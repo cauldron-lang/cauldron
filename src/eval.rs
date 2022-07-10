@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
-use crate::parser;
+use crate::parser::{self, PrefixOperator};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
     Void,
     Integer(i32),
     Error(String),
+    Boolean(bool),
 }
 
 struct Environment {
@@ -32,8 +33,21 @@ impl Environment {
                 }
             }
             parser::Expression::Identifier(_) => todo!(),
-            parser::Expression::Boolean(_) => todo!(),
-            parser::Expression::Prefix(_, _) => todo!(),
+            parser::Expression::Boolean(boolean) => Object::Boolean(boolean),
+            parser::Expression::Prefix(prefix_operator, expression) => {
+                let right = self.eval_expression(*expression);
+
+                match prefix_operator {
+                    PrefixOperator::Minus => todo!(),
+                    PrefixOperator::Bang => match right {
+                        Object::Boolean(true) => Object::Boolean(false),
+                        Object::Boolean(false) => Object::Boolean(true),
+                        _ => Object::Error(String::from(
+                            "Bang operator can only precede boolean expressions",
+                        )),
+                    },
+                }
+            }
             parser::Expression::Infix(_, _, _) => todo!(),
             parser::Expression::Invalid(_) => todo!(),
         }
@@ -73,7 +87,14 @@ mod tests {
 
     #[test]
     fn it_evaluates_expressions() {
-        let expectations = [("1", Object::Integer(1))];
+        let expectations = [
+            ("1", Object::Integer(1)),
+            ("true", Object::Boolean(true)),
+            ("false", Object::Boolean(false)),
+            ("!true", Object::Boolean(false)),
+            ("!false", Object::Boolean(true)),
+            ("!!true", Object::Boolean(true)),
+        ];
 
         for (code, expected) in expectations {
             let actual = eval(parse(tokenize(code)));

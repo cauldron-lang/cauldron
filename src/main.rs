@@ -7,58 +7,42 @@ pub mod eval;
 pub mod lexer;
 pub mod parser;
 
+enum SubCommand {
+    ReadLexPrintLoop,
+    ReadParsePrintLoop,
+    ReadEvaluatePrintLoop,
+}
+
 fn main() {
     let mut args = env::args();
     let subcommand = args.nth(1).expect("Missing subcommand!");
 
     match subcommand.as_str() {
-        "rlpl" => rlpl(),
-        "rppl" => rppl(),
-        "repl" => repl(),
+        "rlpl" => print_loop(SubCommand::ReadLexPrintLoop),
+        "rppl" => print_loop(SubCommand::ReadParsePrintLoop),
+        "repl" => print_loop(SubCommand::ReadEvaluatePrintLoop),
         _ => println!("Unknown subcommand provided {}", subcommand),
     }
 }
 
-fn rlpl() {
-    let mut code = String::new();
-
+fn print_loop(subcommand: SubCommand) {
     loop {
         print!("> ");
         stdout().flush().expect("Failed to write to stdout");
+
+        let mut code = String::new();
+
         io::stdin()
             .read_line(&mut code)
             .expect("rlpl: Failed to read from stdin");
         let tokens = lexer::tokenize(code.as_str().trim_end());
-        println!("{:?}", tokens);
-    }
-}
 
-fn rppl() {
-    let mut code = String::new();
-
-    loop {
-        print!("> ");
-        stdout().flush().expect("Failed to write to stdout");
-        io::stdin()
-            .read_line(&mut code)
-            .expect("rppl: Failed to read from stdin");
-        let tokens = lexer::tokenize(code.as_str().trim_end());
-        let program = parser::parse(tokens);
-        println!("{:?}", program);
-    }
-}
-
-fn repl() {
-    let mut code = String::new();
-    loop {
-        print!("> ");
-        stdout().flush().expect("Failed to write to stdout");
-        io::stdin()
-            .read_line(&mut code)
-            .expect("rppl: Failed to read from stdin");
-        let tokens = lexer::tokenize(code.as_str().trim_end());
-        let program = parser::parse(tokens);
-        let object = eval::eval(program);
-        println!("{:?}", object);
+        match subcommand {
+            SubCommand::ReadLexPrintLoop => println!("{:?}", tokens),
+            SubCommand::ReadParsePrintLoop => println!("{:?}", parser::parse(tokens)),
+            SubCommand::ReadEvaluatePrintLoop => {
+                println!("{:?}", eval::eval(parser::parse(tokens)))
+            }
+        }
     }
 }
