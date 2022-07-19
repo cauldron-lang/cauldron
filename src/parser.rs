@@ -125,6 +125,12 @@ impl<'a> Parser<'a> {
             _ => Statement::Expression(self.parse_expression(Some(current_token))),
         };
 
+        let peek_token = self.tokens.peek();
+
+        if peek_token == Some(&&lexer::Token::Delimiter(';')) {
+            self.tokens.next();
+        }
+
         statement
     }
 

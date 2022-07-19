@@ -10,6 +10,12 @@ pub enum Object {
     Boolean(bool),
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum Result {
+    Void,
+    Object(Object),
+}
+
 struct Environment {
     variables: HashMap<String, Object>,
 }
@@ -19,6 +25,24 @@ impl Environment {
         Self {
             variables: HashMap::new(),
         }
+    }
+
+    fn get(&self, key: &String) -> Option<&Object> {
+        self.variables.get(key)
+    }
+
+    fn set(&mut self, key: String, object: Object) {
+        self.variables.insert(key, object);
+    }
+}
+
+struct Evaluator {
+    environment: Environment,
+}
+
+impl Evaluator {
+    fn new(environment: Environment) -> Self {
+        Self { environment }
     }
 
     fn eval_expression(&mut self, expression: parser::Expression) -> Object {
@@ -32,7 +56,13 @@ impl Environment {
                     Err(parse_error) => Object::Error(format!("{:?}", parse_error)),
                 }
             }
-            parser::Expression::Identifier(_) => todo!(),
+            parser::Expression::Identifier(identifier) => match self.environment.get(&identifier) {
+                Some(object) => object.clone(),
+                None => Object::Error(format!(
+                    "Environment missing identifier {:?}",
+                    identifier.clone()
+                )),
+            },
             parser::Expression::Boolean(boolean) => Object::Boolean(boolean),
             parser::Expression::Prefix(prefix_operator, expression) => {
                 let right = self.eval_expression(*expression);
@@ -69,18 +99,38 @@ impl Environment {
         }
     }
 
-    fn eval_statement(&mut self, statement: parser::Statement) -> Object {
+    fn eval_block(&mut self, block: parser::Block) -> Result {
+        Result::Void
+    }
+
+    fn eval_statement(&mut self, statement: parser::Statement) -> Result {
         match statement {
-            parser::Statement::Assignment(_, _) => todo!(),
+            parser::Statement::Assignment(identifier, expression) => {
+                let object = self.eval_expression(expression);
+
+                self.environment.set(identifier, object);
+                Result::Void
+            }
             parser::Statement::Block(_) => todo!(),
-            parser::Statement::Expression(expression) => self.eval_expression(expression),
-            parser::Statement::Conditional(_, _) => todo!(),
+            parser::Statement::Expression(expression) => {
+                Result::Object(self.eval_expression(expression))
+            }
+            parser::Statement::Conditional(
+                parser::Condition::Expression(condition_expression),
+                consequence,
+            ) => match self.eval_expression(condition_expression) {
+                Object::Boolean(true) => self.eval_block(consequence),
+                object => Result::Object(Object::Error(String::from(format!(
+                    "Condition expression must evalate to boolean, instead received {:?}",
+                    object
+                )))),
+            },
             parser::Statement::Invalid(_) => todo!(),
         }
     }
 
-    fn eval_statements(&mut self, statements: Vec<parser::Statement>) -> Object {
-        let mut object = Object::Void;
+    fn eval_statements(&mut self, statements: Vec<parser::Statement>) -> Result {
+        let mut object = Result::Void;
 
         for statement in statements {
             object = self.eval_statement(statement);
@@ -90,15 +140,16 @@ impl Environment {
     }
 }
 
-pub fn eval(program: parser::Program) -> Object {
+pub fn eval(program: parser::Program) -> Result {
     let mut environment = Environment::new();
+    let mut evaluator = Evaluator::new(environment);
 
-    environment.eval_statements(program.statements)
+    evaluator.eval_statements(program.statements)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{eval, Object};
+    use super::{eval, Object, Result};
     use crate::{lexer::tokenize, parser::parse};
 
     #[test]
@@ -115,6 +166,17 @@ mod tests {
             ("5 - 1 - 2", Object::Integer(2)),
             ("1 + 1 + 1 + 1 + 1 + 1 + 1 + 1", Object::Integer(8)),
         ];
+
+        for (code, expected) in expectations {
+            let actual = eval(parse(tokenize(code)));
+
+            assert_eq!(actual, Result::Object(expected));
+        }
+    }
+
+    #[test]
+    fn it_evaluates_statements() {
+        let expectations = [("a = 1; a", Result::Object(Object::Integer(1)))];
 
         for (code, expected) in expectations {
             let actual = eval(parse(tokenize(code)));
