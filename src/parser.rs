@@ -1,6 +1,6 @@
 use std::{iter::Peekable, slice::Iter};
 
-use crate::lexer;
+use crate::lexer::{self, Operator};
 
 // LOWEST
 // EQUALS ==
@@ -32,6 +32,8 @@ pub enum PrefixOperator {
 pub enum InfixOperator {
     Minus,
     Plus,
+    Equals,
+    NotEquals,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -103,7 +105,10 @@ impl<'a> Parser<'a> {
     fn parse_statement(&mut self, current_token: &lexer::Token) -> Statement {
         let peek_token = self.tokens.peek();
         let statement = match (current_token, peek_token) {
-            (lexer::Token::Identifier(name), Some(&&lexer::Token::Operator('='))) => {
+            (
+                lexer::Token::Identifier(name),
+                Some(&&lexer::Token::Operator(lexer::Operator::Assignment)),
+            ) => {
                 self.tokens.next();
                 let next_token = self.tokens.next();
 
@@ -119,11 +124,14 @@ impl<'a> Parser<'a> {
 
                 self.parse_if_statement(next_token)
             }
-            // (lexer::Token::Operator('-'), _) => Statement::Expression(
-            //     self.parse_prefix_expression(PrefixOperator::Minus, next_token),
-            // ),
             _ => Statement::Expression(self.parse_expression(Some(current_token))),
         };
+
+        let peek_token = self.tokens.peek();
+
+        if peek_token == Some(&&lexer::Token::Delimiter(';')) {
+            self.tokens.next();
+        }
 
         statement
     }
@@ -161,19 +169,26 @@ impl<'a> Parser<'a> {
             Some(lexer::Token::Delimiter('(')) => {
                 let next_token = self.tokens.next();
                 let condition = Condition::Expression(self.parse_expression(next_token));
-                let next_token = self.tokens.next();
-                let consequence = match next_token {
-                    Some(lexer::Token::Delimiter('{')) => {
-                        let next_token = self.tokens.next();
+                let peek_token = self.tokens.peek();
 
-                        self.parse_block(next_token)
-                    }
-                    Some(invalid_token) => self.error_block(format!(
-                        "Invalid token while parsing 'if' statement's consequence: {:?}",
-                        invalid_token
-                    )),
-                    None => self.error_block(String::from("Missing 'if' statement's consequence")),
-                };
+                if peek_token != Some(&&lexer::Token::Delimiter(')')) {
+                    return self.error_statement(String::from(
+                        "Missing close parenthesis for containing condition in conditional",
+                    ));
+                }
+
+                self.tokens.next();
+                let peek_token = self.tokens.peek();
+
+                if peek_token != Some(&&lexer::Token::Delimiter('{')) {
+                    return self.error_statement(String::from(
+                        "Missing open curly brace for containing consequence in conditional",
+                    ));
+                }
+
+                self.tokens.next();
+                let next_token = self.tokens.next();
+                let consequence = self.parse_block(next_token);
 
                 Statement::Conditional(condition, consequence)
             }
@@ -207,6 +222,8 @@ impl<'a> Parser<'a> {
         match infix_operator {
             InfixOperator::Minus => PRECEDENCE_SUM,
             InfixOperator::Plus => PRECEDENCE_SUM,
+            InfixOperator::Equals => PRECEDENCE_EQUALS,
+            InfixOperator::NotEquals => PRECEDENCE_EQUALS,
         }
     }
 
@@ -214,10 +231,11 @@ impl<'a> Parser<'a> {
         let token = self.tokens.peek();
 
         match token {
-            Some(&&lexer::Token::Operator('-')) | Some(&&lexer::Token::Operator('+')) => {
-                PRECEDENCE_SUM
-            }
+            Some(&&lexer::Token::Operator(lexer::Operator::Minus))
+            | Some(&&lexer::Token::Operator(lexer::Operator::Plus)) => PRECEDENCE_SUM,
             Some(&&lexer::Token::Delimiter('(')) => PRECEDENCE_CALL,
+            Some(&&lexer::Token::Operator(Operator::Equals))
+            | Some(&&lexer::Token::Operator(Operator::NotEquals)) => PRECEDENCE_EQUALS,
             _ => PRECEDENCE_LOWEST,
         }
     }
@@ -293,7 +311,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn is_peek_semicolon(&mut self) -> bool {
+    fn is_peek_not_semicolon(&mut self) -> bool {
         self.tokens.peek() != Some(&&lexer::Token::Delimiter(';'))
     }
 
@@ -303,7 +321,9 @@ impl<'a> Parser<'a> {
         precedence: u8,
     ) -> Expression {
         let mut left_expression = match current_token {
-            lexer::Token::Operator(operator) if *operator == '-' || *operator == '!' => {
+            lexer::Token::Operator(operator)
+                if *operator == Operator::Minus || *operator == Operator::Bang =>
+            {
                 let next_token = self.tokens.next();
                 let right_expression = match next_token {
                     Some(token) => self.parse_expression_with_precedence(token, PRECEDENCE_PREFIX),
@@ -311,7 +331,7 @@ impl<'a> Parser<'a> {
                         .error_expression(String::from("Missing token while parsing expression")),
                 };
 
-                if *operator == '-' {
+                if *operator == Operator::Minus {
                     return Expression::Prefix(PrefixOperator::Minus, Box::new(right_expression));
                 }
 
@@ -324,21 +344,32 @@ impl<'a> Parser<'a> {
             lexer::Token::Keyword(_) => todo!(),
             lexer::Token::Boolean(boolean) => Expression::Boolean(*boolean),
             lexer::Token::Illegal => todo!(),
+            lexer::Token::Operator(_) => todo!(),
         };
 
-        while self.is_peek_semicolon() && precedence < self.peek_precedence() {
+        while self.is_peek_not_semicolon() && precedence < self.peek_precedence() {
             let peek_token = self.tokens.peek();
 
             match peek_token {
-                Some(&&lexer::Token::Operator('-')) => {
+                Some(&&lexer::Token::Operator(Operator::Minus)) => {
                     self.tokens.next();
                     left_expression =
                         self.parse_infix_expression(left_expression, InfixOperator::Minus);
                 }
-                Some(&&lexer::Token::Operator('+')) => {
+                Some(&&lexer::Token::Operator(Operator::Plus)) => {
                     self.tokens.next();
                     left_expression =
                         self.parse_infix_expression(left_expression, InfixOperator::Plus)
+                }
+                Some(&&lexer::Token::Operator(Operator::Equals)) => {
+                    self.tokens.next();
+                    left_expression =
+                        self.parse_infix_expression(left_expression, InfixOperator::Equals);
+                }
+                Some(&&lexer::Token::Operator(Operator::NotEquals)) => {
+                    self.tokens.next();
+                    left_expression =
+                        self.parse_infix_expression(left_expression, InfixOperator::NotEquals);
                 }
                 Some(&&lexer::Token::Delimiter('(')) => {
                     self.tokens.next();
@@ -353,7 +384,7 @@ impl<'a> Parser<'a> {
 
     fn parse_expression(&mut self, current_token: Option<&lexer::Token>) -> Expression {
         match current_token {
-            Some(token) => self.parse_expression_with_precedence(token, 0),
+            Some(token) => self.parse_expression_with_precedence(token, PRECEDENCE_LOWEST),
             None => self.error_expression(String::from("Missing token while parsing expression")),
         }
     }
@@ -396,7 +427,7 @@ pub fn parse(tokens: lexer::Tokens) -> Program {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, Block, Program, Statement};
+    use super::{parse, Block, Condition, Program, Statement};
     use crate::{
         lexer::tokenize,
         parser::{Expression, InfixOperator, PrefixOperator},
@@ -442,6 +473,13 @@ mod tests {
                     Box::new(Expression::Integer(String::from("50"))),
                 ),
             ),
+            (
+                "print(1)",
+                Expression::Call(
+                    Box::new(Expression::Identifier(String::from("print"))),
+                    vec![Expression::Integer(String::from("1"))],
+                ),
+            ),
         ];
 
         for (code, expression) in expectations {
@@ -453,43 +491,36 @@ mod tests {
     }
 
     #[test]
-    fn it_parses_calling_block_expressions() {
-        let expectations = [(
-            "print(1)",
-            Expression::Call(
-                Box::new(Expression::Identifier(String::from("print"))),
-                vec![Expression::Integer(String::from("1"))],
+    fn it_parses_statements() {
+        let expectations = [
+            (
+                "a = 1",
+                Statement::Assignment(String::from("a"), Expression::Integer(String::from("1"))),
             ),
-        )];
+            (
+                "{ a = 1 }",
+                Statement::Block(Block::Statements(vec![Statement::Assignment(
+                    String::from("a"),
+                    Expression::Integer(String::from("1")),
+                )])),
+            ),
+            (
+                "if (1) { print(1) }",
+                Statement::Conditional(
+                    Condition::Expression(Expression::Integer(String::from("1"))),
+                    Block::Statements(vec![Statement::Expression(Expression::Call(
+                        Box::new(Expression::Identifier(String::from("print"))),
+                        vec![Expression::Integer(String::from("1"))],
+                    ))]),
+                ),
+            ),
+        ];
 
-        for (code, expression) in expectations {
+        for (code, statement) in expectations {
             let actual = parse(tokenize(code));
-            let expected = Program::new(vec![Statement::Expression(expression)]);
+            let expected = Program::new(vec![statement]);
 
             assert_eq!(actual, expected);
         }
-    }
-
-    #[test]
-    fn it_parses_simple_assignment() {
-        let actual = parse(tokenize("a = 1"));
-        let statement =
-            Statement::Assignment(String::from("a"), Expression::Integer(String::from("1")));
-        let expected = Program::new(vec![statement]);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn it_parses_simple_blocks() {
-        let actual = parse(tokenize("{ a = 1 }"));
-        let actual_with_semicolon = parse(tokenize("{ a = 1; }"));
-        let assignment_statement =
-            Statement::Assignment(String::from("a"), Expression::Integer(String::from("1")));
-        let block_statement = Statement::Block(Block::Statements(vec![assignment_statement]));
-        let expected = Program::new(vec![block_statement]);
-
-        assert_eq!(actual, expected);
-        assert_eq!(actual_with_semicolon, expected);
     }
 }
