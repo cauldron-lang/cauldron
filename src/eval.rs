@@ -87,6 +87,10 @@ impl Evaluator {
                         match infix_operator {
                             InfixOperator::Minus => Object::Integer(left_integer - right_integer),
                             InfixOperator::Plus => Object::Integer(left_integer + right_integer),
+                            InfixOperator::Equals => Object::Boolean(left_integer == right_integer),
+                            InfixOperator::NotEquals => {
+                                Object::Boolean(left_integer != right_integer)
+                            }
                         }
                     }
                     _ => Object::Error(format!(
@@ -165,6 +169,8 @@ mod tests {
             ("1 + 1", Object::Integer(2)),
             ("5 - 1 - 2", Object::Integer(2)),
             ("1 + 1 + 1 + 1 + 1 + 1 + 1 + 1", Object::Integer(8)),
+            ("1 == 1", Object::Boolean(true)),
+            ("1 != 1", Object::Boolean(false)),
         ];
 
         for (code, expected) in expectations {

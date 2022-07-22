@@ -1,8 +1,20 @@
 use regex::Regex;
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum Operator {
+    Minus,
+    Plus,
+    Equals,
+    NotEquals,
+    Assignment,
+    Bang,
+    Divide,
+    Multiply,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
-    Operator(char),
+    Operator(Operator),
     Delimiter(char),
     Integer(String),
     Boolean(bool),
@@ -25,12 +37,30 @@ pub fn tokenize(str: &str) -> Tokens {
 
     loop {
         let current = characters.next();
+        let peek = characters.peek();
 
         match current {
             Some(' ') => continue,
-            Some(operator) if valid_operator.is_match(String::from(operator).as_str()) => {
-                tokens.push(Token::Operator(operator))
+            Some('=') => {
+                if peek == Some(&'=') {
+                    tokens.push(Token::Operator(Operator::Equals));
+                    characters.next();
+                } else {
+                    tokens.push(Token::Operator(Operator::Assignment));
+                }
             }
+            Some('!') => {
+                if peek == Some(&'=') {
+                    tokens.push(Token::Operator(Operator::NotEquals));
+                    characters.next();
+                } else {
+                    tokens.push(Token::Operator(Operator::Bang))
+                }
+            }
+            Some('-') => tokens.push(Token::Operator(Operator::Minus)),
+            Some('+') => tokens.push(Token::Operator(Operator::Plus)),
+            Some('/') => tokens.push(Token::Operator(Operator::Divide)),
+            Some('*') => tokens.push(Token::Operator(Operator::Multiply)),
             Some(delimiter) if valid_delimiter.is_match(String::from(delimiter).as_str()) => {
                 tokens.push(Token::Delimiter(delimiter))
             }
@@ -74,6 +104,7 @@ pub fn tokenize(str: &str) -> Tokens {
 
 #[cfg(test)]
 mod tests {
+    use super::Operator;
     use crate::lexer::tokenize;
     use crate::lexer::Token;
     use crate::lexer::Tokens;
@@ -139,7 +170,7 @@ mod tests {
         let actual = tokenize("a = 123");
         let expected = Tokens::from(vec![
             Token::Identifier(String::from("a")),
-            Token::Operator('='),
+            Token::Operator(Operator::Assignment),
             Token::Integer(String::from("123")),
         ]);
 
@@ -151,7 +182,7 @@ mod tests {
         let actual = tokenize("add = {|a, b| a + b }");
         let expected = Tokens::from(vec![
             Token::Identifier(String::from("add")),
-            Token::Operator('='),
+            Token::Operator(Operator::Assignment),
             Token::Delimiter('{'),
             Token::Delimiter('|'),
             Token::Identifier(String::from("a")),
@@ -159,7 +190,7 @@ mod tests {
             Token::Identifier(String::from("b")),
             Token::Delimiter('|'),
             Token::Identifier(String::from("a")),
-            Token::Operator('+'),
+            Token::Operator(Operator::Plus),
             Token::Identifier(String::from("b")),
             Token::Delimiter('}'),
         ]);
@@ -191,9 +222,31 @@ mod tests {
         let expectations = [
             (
                 "-100",
-                vec![Token::Operator('-'), Token::Integer(String::from("100"))],
+                vec![
+                    Token::Operator(Operator::Minus),
+                    Token::Integer(String::from("100")),
+                ],
             ),
-            ("!false", vec![Token::Operator('!'), Token::Boolean(false)]),
+            (
+                "!false",
+                vec![Token::Operator(Operator::Bang), Token::Boolean(false)],
+            ),
+            (
+                "a == b",
+                vec![
+                    Token::Identifier(String::from("a")),
+                    Token::Operator(Operator::Equals),
+                    Token::Identifier(String::from("b")),
+                ],
+            ),
+            (
+                "a != b",
+                vec![
+                    Token::Identifier(String::from("a")),
+                    Token::Operator(Operator::NotEquals),
+                    Token::Identifier(String::from("b")),
+                ],
+            ),
         ];
 
         for (code, tokens) in expectations {
