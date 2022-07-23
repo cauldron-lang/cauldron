@@ -34,7 +34,10 @@ pub enum InfixOperator {
     Plus,
     Equals,
     NotEquals,
+    GreaterThan,
+    LessThan,
     Multiply,
+    Divide,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -225,7 +228,10 @@ impl<'a> Parser<'a> {
             InfixOperator::Plus => PRECEDENCE_SUM,
             InfixOperator::Equals => PRECEDENCE_EQUALS,
             InfixOperator::NotEquals => PRECEDENCE_EQUALS,
+            InfixOperator::GreaterThan => PRECEDENCE_LESSGREATER,
+            InfixOperator::LessThan => PRECEDENCE_LESSGREATER,
             InfixOperator::Multiply => PRECEDENCE_PRODUCT,
+            InfixOperator::Divide => PRECEDENCE_PRODUCT,
         }
     }
 
@@ -238,7 +244,10 @@ impl<'a> Parser<'a> {
             Some(&&lexer::Token::Delimiter('(')) => PRECEDENCE_CALL,
             Some(&&lexer::Token::Operator(lexer::Operator::Equals))
             | Some(&&lexer::Token::Operator(lexer::Operator::NotEquals)) => PRECEDENCE_EQUALS,
-            Some(&&lexer::Token::Operator(lexer::Operator::Multiply)) => PRECEDENCE_PRODUCT,
+            Some(&&lexer::Token::Operator(lexer::Operator::Multiply))
+            | Some(&&lexer::Token::Operator(lexer::Operator::Divide)) => PRECEDENCE_PRODUCT,
+            Some(&&lexer::Token::Operator(lexer::Operator::GreaterThan))
+            | Some(&&lexer::Token::Operator(lexer::Operator::LessThan)) => PRECEDENCE_LESSGREATER,
             _ => PRECEDENCE_LOWEST,
         }
     }
@@ -348,7 +357,7 @@ impl<'a> Parser<'a> {
                 match current_token {
                     Some(current_token) => {
                         let delimited_expression =
-                            self.parse_expression_with_precedence(current_token, precedence);
+                            self.parse_expression_with_precedence(current_token, PRECEDENCE_LOWEST);
                         let peek_token = self.tokens.peek();
 
                         match peek_token {
@@ -393,6 +402,11 @@ impl<'a> Parser<'a> {
                     left_expression =
                         self.parse_infix_expression(left_expression, InfixOperator::Multiply)
                 }
+                Some(&&lexer::Token::Operator(lexer::Operator::Divide)) => {
+                    self.tokens.next();
+                    left_expression =
+                        self.parse_infix_expression(left_expression, InfixOperator::Divide)
+                }
                 Some(&&lexer::Token::Operator(lexer::Operator::Equals)) => {
                     self.tokens.next();
                     left_expression =
@@ -402,6 +416,16 @@ impl<'a> Parser<'a> {
                     self.tokens.next();
                     left_expression =
                         self.parse_infix_expression(left_expression, InfixOperator::NotEquals);
+                }
+                Some(&&lexer::Token::Operator(lexer::Operator::GreaterThan)) => {
+                    self.tokens.next();
+                    left_expression =
+                        self.parse_infix_expression(left_expression, InfixOperator::GreaterThan);
+                }
+                Some(&&lexer::Token::Operator(lexer::Operator::LessThan)) => {
+                    self.tokens.next();
+                    left_expression =
+                        self.parse_infix_expression(left_expression, InfixOperator::LessThan);
                 }
                 Some(&&lexer::Token::Delimiter('(')) => {
                     self.tokens.next();
@@ -465,106 +489,174 @@ mod tests {
         parser::{Expression, InfixOperator, PrefixOperator},
     };
 
-    #[test]
-    fn it_parses_expressions() {
-        let expectations = [
-            (
-                "-100",
-                Expression::Prefix(
-                    PrefixOperator::Minus,
-                    Box::new(Expression::Integer(String::from("100"))),
-                ),
-            ),
-            (
-                "!false",
-                Expression::Prefix(PrefixOperator::Bang, Box::new(Expression::Boolean(false))),
-            ),
-            (
-                "!!true",
-                Expression::Prefix(
-                    PrefixOperator::Bang,
-                    Box::new(Expression::Prefix(
-                        PrefixOperator::Bang,
-                        Box::new(Expression::Boolean(true)),
-                    )),
-                ),
-            ),
-            (
-                "100 - 50",
-                Expression::Infix(
-                    InfixOperator::Minus,
-                    Box::new(Expression::Integer(String::from("100"))),
-                    Box::new(Expression::Integer(String::from("50"))),
-                ),
-            ),
-            (
-                "100 + 50",
-                Expression::Infix(
-                    InfixOperator::Plus,
-                    Box::new(Expression::Integer(String::from("100"))),
-                    Box::new(Expression::Integer(String::from("50"))),
-                ),
-            ),
-            (
-                "(100 + 50) * 5",
-                Expression::Infix(
-                    InfixOperator::Multiply,
-                    Box::new(Expression::Infix(
-                        InfixOperator::Plus,
-                        Box::new(Expression::Integer(String::from("100"))),
-                        Box::new(Expression::Integer(String::from("50"))),
-                    )),
-                    Box::new(Expression::Integer(String::from("5"))),
-                ),
-            ),
-            (
-                "print(1)",
-                Expression::Call(
-                    Box::new(Expression::Identifier(String::from("print"))),
-                    vec![Expression::Integer(String::from("1"))],
-                ),
-            ),
-        ];
+    fn assert_expression_eq(code: &str, expression: Expression) {
+        let actual = parse(tokenize(code));
+        let expected = Program::new(vec![Statement::Expression(expression)]);
 
-        for (code, expression) in expectations {
-            let actual = parse(tokenize(code));
-            let expected = Program::new(vec![Statement::Expression(expression)]);
+        assert_eq!(actual, expected);
+    }
 
-            assert_eq!(actual, expected);
-        }
+    fn assert_statement_eq(code: &str, statement: Statement) {
+        let actual = parse(tokenize(code));
+        let expected = Program::new(vec![statement]);
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
-    fn it_parses_statements() {
-        let expectations = [
-            (
-                "a = 1",
-                Statement::Assignment(String::from("a"), Expression::Integer(String::from("1"))),
+    fn it_parses_grouped_expression_1() {
+        assert_expression_eq(
+            "10 * (4 + 1)",
+            Expression::Infix(
+                InfixOperator::Multiply,
+                Box::new(Expression::Integer(String::from("10"))),
+                Box::new(Expression::Infix(
+                    InfixOperator::Plus,
+                    Box::new(Expression::Integer(String::from("4"))),
+                    Box::new(Expression::Integer(String::from("1"))),
+                )),
             ),
-            (
-                "{ a = 1 }",
-                Statement::Block(Block::Statements(vec![Statement::Assignment(
-                    String::from("a"),
-                    Expression::Integer(String::from("1")),
-                )])),
-            ),
-            (
-                "if (1) { print(1) }",
-                Statement::Conditional(
-                    Condition::Expression(Expression::Integer(String::from("1"))),
-                    Block::Statements(vec![Statement::Expression(Expression::Call(
-                        Box::new(Expression::Identifier(String::from("print"))),
-                        vec![Expression::Integer(String::from("1"))],
-                    ))]),
-                ),
-            ),
-        ];
+        );
+    }
 
-        for (code, statement) in expectations {
-            let actual = parse(tokenize(code));
-            let expected = Program::new(vec![statement]);
+    #[test]
+    fn it_parses_grouped_expression_2() {
+        assert_expression_eq(
+            "(100 + 50) * 5",
+            Expression::Infix(
+                InfixOperator::Multiply,
+                Box::new(Expression::Infix(
+                    InfixOperator::Plus,
+                    Box::new(Expression::Integer(String::from("100"))),
+                    Box::new(Expression::Integer(String::from("50"))),
+                )),
+                Box::new(Expression::Integer(String::from("5"))),
+            ),
+        )
+    }
 
-            assert_eq!(actual, expected);
-        }
+    #[test]
+    fn it_parses_negative_number_expression() {
+        assert_expression_eq(
+            "-100",
+            Expression::Prefix(
+                PrefixOperator::Minus,
+                Box::new(Expression::Integer(String::from("100"))),
+            ),
+        );
+    }
+
+    #[test]
+    fn it_parses_bang_expression_1() {
+        assert_expression_eq(
+            "!false",
+            Expression::Prefix(PrefixOperator::Bang, Box::new(Expression::Boolean(false))),
+        );
+    }
+
+    #[test]
+    fn it_parse_bang_expression_2() {
+        assert_expression_eq(
+            "!!true",
+            Expression::Prefix(
+                PrefixOperator::Bang,
+                Box::new(Expression::Prefix(
+                    PrefixOperator::Bang,
+                    Box::new(Expression::Boolean(true)),
+                )),
+            ),
+        );
+    }
+
+    #[test]
+    fn it_parses_subtraction_expression() {
+        assert_expression_eq(
+            "100 - 50",
+            Expression::Infix(
+                InfixOperator::Minus,
+                Box::new(Expression::Integer(String::from("100"))),
+                Box::new(Expression::Integer(String::from("50"))),
+            ),
+        );
+    }
+
+    #[test]
+    fn it_parses_addition_expression() {
+        assert_expression_eq(
+            "100 + 50",
+            Expression::Infix(
+                InfixOperator::Plus,
+                Box::new(Expression::Integer(String::from("100"))),
+                Box::new(Expression::Integer(String::from("50"))),
+            ),
+        );
+    }
+
+    #[test]
+    fn it_parses_call_expression() {
+        assert_expression_eq(
+            "print(1)",
+            Expression::Call(
+                Box::new(Expression::Identifier(String::from("print"))),
+                vec![Expression::Integer(String::from("1"))],
+            ),
+        );
+    }
+
+    #[test]
+    fn it_parses_greater_than_expression() {
+        assert_expression_eq(
+            "1 > 2",
+            Expression::Infix(
+                InfixOperator::GreaterThan,
+                Box::new(Expression::Integer(String::from("1"))),
+                Box::new(Expression::Integer(String::from("2"))),
+            ),
+        );
+    }
+
+    #[test]
+    fn it_parses_less_than_expression() {
+        assert_expression_eq(
+            "1 < 2",
+            Expression::Infix(
+                InfixOperator::LessThan,
+                Box::new(Expression::Integer(String::from("1"))),
+                Box::new(Expression::Integer(String::from("2"))),
+            ),
+        );
+    }
+
+    #[test]
+    fn it_parses_assignment_statement() {
+        assert_statement_eq(
+            "a = 1",
+            Statement::Assignment(String::from("a"), Expression::Integer(String::from("1"))),
+        );
+    }
+
+    #[test]
+    fn it_parses_assignment_in_block_statement() {
+        assert_statement_eq(
+            "{ a = 1 }",
+            Statement::Block(Block::Statements(vec![Statement::Assignment(
+                String::from("a"),
+                Expression::Integer(String::from("1")),
+            )])),
+        );
+    }
+
+    #[test]
+    fn it_parses_call_in_conditional() {
+        assert_statement_eq(
+            "if (1) { print(1) }",
+            Statement::Conditional(
+                Condition::Expression(Expression::Integer(String::from("1"))),
+                Block::Statements(vec![Statement::Expression(Expression::Call(
+                    Box::new(Expression::Identifier(String::from("print"))),
+                    vec![Expression::Integer(String::from("1"))],
+                ))]),
+            ),
+        );
     }
 }

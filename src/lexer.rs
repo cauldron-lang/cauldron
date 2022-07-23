@@ -6,6 +6,8 @@ pub enum Operator {
     Plus,
     Equals,
     NotEquals,
+    GreaterThan,
+    LessThan,
     Assignment,
     Bang,
     Divide,
@@ -60,6 +62,8 @@ pub fn tokenize(str: &str) -> Tokens {
             Some('+') => tokens.push(Token::Operator(Operator::Plus)),
             Some('/') => tokens.push(Token::Operator(Operator::Divide)),
             Some('*') => tokens.push(Token::Operator(Operator::Multiply)),
+            Some('>') => tokens.push(Token::Operator(Operator::GreaterThan)),
+            Some('<') => tokens.push(Token::Operator(Operator::LessThan)),
             Some(delimiter) if valid_delimiter.is_match(String::from(delimiter).as_str()) => {
                 tokens.push(Token::Delimiter(delimiter))
             }
@@ -107,6 +111,10 @@ mod tests {
     use crate::lexer::tokenize;
     use crate::lexer::Token;
     use crate::lexer::Tokens;
+
+    fn assert_tokens_eq(code: &str, tokens: Vec<Token>) {
+        assert_eq!(tokenize(code), Tokens::from(tokens));
+    }
 
     #[test]
     fn it_lexes_calling() {
@@ -217,54 +225,85 @@ mod tests {
     }
 
     #[test]
-    fn it_lexes_simple_expressions() {
-        let expectations = [
-            (
-                "-100",
-                vec![
-                    Token::Operator(Operator::Minus),
-                    Token::Integer(String::from("100")),
-                ],
-            ),
-            (
-                "!false",
-                vec![Token::Operator(Operator::Bang), Token::Boolean(false)],
-            ),
-            (
-                "a == b",
-                vec![
-                    Token::Identifier(String::from("a")),
-                    Token::Operator(Operator::Equals),
-                    Token::Identifier(String::from("b")),
-                ],
-            ),
-            (
-                "a != b",
-                vec![
-                    Token::Identifier(String::from("a")),
-                    Token::Operator(Operator::NotEquals),
-                    Token::Identifier(String::from("b")),
-                ],
-            ),
-            (
-                "(100 + 50) * 5",
-                vec![
-                    Token::Delimiter('('),
-                    Token::Integer(String::from("100")),
-                    Token::Operator(Operator::Plus),
-                    Token::Integer(String::from("50")),
-                    Token::Delimiter(')'),
-                    Token::Operator(Operator::Multiply),
-                    Token::Integer(String::from("5")),
-                ],
-            ),
-        ];
+    fn it_lexes_greater_than_expressions() {
+        assert_tokens_eq(
+            "1 > 2",
+            vec![
+                Token::Integer(String::from("1")),
+                Token::Operator(Operator::GreaterThan),
+                Token::Integer(String::from("2")),
+            ],
+        )
+    }
 
-        for (code, tokens) in expectations {
-            let actual = tokenize(code);
-            let expected = Tokens::from(tokens);
+    #[test]
+    fn it_lexes_less_than_expressions() {
+        assert_tokens_eq(
+            "1 < 2",
+            vec![
+                Token::Integer(String::from("1")),
+                Token::Operator(Operator::LessThan),
+                Token::Integer(String::from("2")),
+            ],
+        )
+    }
 
-            assert_eq!(actual, expected);
-        }
+    #[test]
+    fn it_lexes_negative_number_expression() {
+        assert_tokens_eq(
+            "-100",
+            vec![
+                Token::Operator(Operator::Minus),
+                Token::Integer(String::from("100")),
+            ],
+        );
+    }
+
+    #[test]
+    fn it_lexes_bang_expression_1() {
+        assert_tokens_eq(
+            "!false",
+            vec![Token::Operator(Operator::Bang), Token::Boolean(false)],
+        );
+    }
+
+    #[test]
+    fn it_lexes_equality_expressions_1() {
+        assert_tokens_eq(
+            "a == b",
+            vec![
+                Token::Identifier(String::from("a")),
+                Token::Operator(Operator::Equals),
+                Token::Identifier(String::from("b")),
+            ],
+        );
+    }
+
+    #[test]
+    fn it_lexes_equality_expressions_2() {
+        assert_tokens_eq(
+            "a != b",
+            vec![
+                Token::Identifier(String::from("a")),
+                Token::Operator(Operator::NotEquals),
+                Token::Identifier(String::from("b")),
+            ],
+        );
+    }
+
+    #[test]
+    fn it_lexes_group_expressions() {
+        assert_tokens_eq(
+            "(100 + 50) * 5",
+            vec![
+                Token::Delimiter('('),
+                Token::Integer(String::from("100")),
+                Token::Operator(Operator::Plus),
+                Token::Integer(String::from("50")),
+                Token::Delimiter(')'),
+                Token::Operator(Operator::Multiply),
+                Token::Integer(String::from("5")),
+            ],
+        );
     }
 }

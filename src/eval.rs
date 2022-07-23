@@ -91,9 +91,16 @@ impl Evaluator {
                             InfixOperator::NotEquals => {
                                 Object::Boolean(left_integer != right_integer)
                             }
+                            InfixOperator::GreaterThan => {
+                                Object::Boolean(left_integer > right_integer)
+                            }
+                            InfixOperator::LessThan => {
+                                Object::Boolean(left_integer < right_integer)
+                            }
                             InfixOperator::Multiply => {
                                 Object::Integer(left_integer * right_integer)
                             }
+                            InfixOperator::Divide => Object::Integer(left_integer / right_integer),
                         }
                     }
                     _ => Object::Error(format!(
@@ -159,40 +166,89 @@ mod tests {
     use super::{eval, Object, Result};
     use crate::{lexer::tokenize, parser::parse};
 
-    #[test]
-    fn it_evaluates_expressions() {
-        let expectations = [
-            ("1", Object::Integer(1)),
-            ("true", Object::Boolean(true)),
-            ("false", Object::Boolean(false)),
-            ("!true", Object::Boolean(false)),
-            ("!false", Object::Boolean(true)),
-            ("!!true", Object::Boolean(true)),
-            ("1 - 1", Object::Integer(0)),
-            ("1 + 1", Object::Integer(2)),
-            ("5 - 1 - 2", Object::Integer(2)),
-            ("1 + 1 + 1 + 1 + 1 + 1 + 1 + 1", Object::Integer(8)),
-            ("5 + 5 * 5", Object::Integer(30)),
-            ("(5 + 5) * 5", Object::Integer(50)),
-            ("1 == 1", Object::Boolean(true)),
-            ("1 != 1", Object::Boolean(false)),
-        ];
+    fn assert_evaluated_object(code: &str, object: Object) {
+        let actual = eval(parse(tokenize(code)));
 
-        for (code, expected) in expectations {
-            let actual = eval(parse(tokenize(code)));
-
-            assert_eq!(actual, Result::Object(expected));
-        }
+        assert_eq!(actual, Result::Object(object));
     }
 
     #[test]
-    fn it_evaluates_statements() {
-        let expectations = [("a = 1; a", Result::Object(Object::Integer(1)))];
+    fn it_evaluates_integer_expressions() {
+        assert_evaluated_object("1", Object::Integer(1));
+    }
 
-        for (code, expected) in expectations {
-            let actual = eval(parse(tokenize(code)));
+    #[test]
+    fn it_evaluates_true_boolean_expressions() {
+        assert_evaluated_object("true", Object::Boolean(true));
+    }
 
-            assert_eq!(actual, expected);
-        }
+    #[test]
+    fn it_evaluates_false_boolean_expressions() {
+        assert_evaluated_object("false", Object::Boolean(false));
+    }
+
+    #[test]
+    fn it_evaluates_bang_true_boolean_expressions() {
+        assert_evaluated_object("!true", Object::Boolean(false));
+    }
+
+    #[test]
+    fn it_evaluates_bang_false_boolean_expressions() {
+        assert_evaluated_object("!false", Object::Boolean(true));
+    }
+
+    #[test]
+    fn it_evaluates_bang_bang_true_boolean_expressions() {
+        assert_evaluated_object("!!true", Object::Boolean(true));
+    }
+
+    #[test]
+    fn it_evaluates_subtraction_expressions() {
+        assert_evaluated_object("1 - 1", Object::Integer(0));
+    }
+
+    #[test]
+    fn it_evaluates_addition_expressions() {
+        assert_evaluated_object("1 + 1", Object::Integer(2));
+    }
+
+    #[test]
+    fn it_evaluates_consecutive_subtraction_expressions() {
+        assert_evaluated_object("5 - 1 - 2", Object::Integer(2));
+    }
+
+    #[test]
+    fn it_evaluates_consecutive_addition_expressions() {
+        assert_evaluated_object("1 + 1 + 1 + 1 + 1 + 1 + 1 + 1", Object::Integer(8));
+    }
+
+    #[test]
+    fn it_evaluates_addition_before_multiplication_expressions() {
+        assert_evaluated_object("5 + 5 * 5", Object::Integer(30));
+    }
+
+    #[test]
+    fn it_evaluates_grouped_addition_before_multiplication_expressions() {
+        assert_evaluated_object("(5 + 5) * 5", Object::Integer(50));
+    }
+
+    #[test]
+    fn it_evaluates_complex_grouped_arithmetic_expressions() {
+        assert_evaluated_object("10 / ((3 - 1) * 2 + 1)", Object::Integer(2));
+    }
+
+    #[test]
+    fn it_evaluates_integer_equality_expressions() {
+        assert_evaluated_object("1 == 1", Object::Boolean(true));
+    }
+
+    #[test]
+    fn it_evaluates_integer_inequality_expressions() {
+        assert_evaluated_object("1 != 1", Object::Boolean(false));
+    }
+
+    #[test]
+    fn it_evaluates_assignment_statements() {
+        assert_evaluated_object("a = 1; a", Object::Integer(1));
     }
 }
