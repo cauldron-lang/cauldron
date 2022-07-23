@@ -32,7 +32,6 @@ pub fn tokenize(str: &str) -> Tokens {
     let valid_alphanum = Regex::new("^[a-zA-Z0-9_]+$").unwrap();
     let valid_keyword = Regex::new("^(if)$").unwrap();
     let valid_delimiter = Regex::new("^(,|;|\\(|\\)|\\{|\\}|\\|)$").unwrap();
-    let valid_operator = Regex::new("^(\\+|=|-|!)$").unwrap();
     let valid_boolean = Regex::new("^(true|false)$").unwrap();
 
     loop {
@@ -218,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn it_lexes_simple_prefix_expressions() {
+    fn it_lexes_simple_expressions() {
         let expectations = [
             (
                 "-100",
@@ -245,6 +244,18 @@ mod tests {
                     Token::Identifier(String::from("a")),
                     Token::Operator(Operator::NotEquals),
                     Token::Identifier(String::from("b")),
+                ],
+            ),
+            (
+                "(100 + 50) * 5",
+                vec![
+                    Token::Delimiter('('),
+                    Token::Integer(String::from("100")),
+                    Token::Operator(Operator::Plus),
+                    Token::Integer(String::from("50")),
+                    Token::Delimiter(')'),
+                    Token::Operator(Operator::Multiply),
+                    Token::Integer(String::from("5")),
                 ],
             ),
         ];

@@ -1,6 +1,6 @@
 use std::{iter::Peekable, slice::Iter};
 
-use crate::lexer::{self, Operator};
+use crate::lexer;
 
 // LOWEST
 // EQUALS ==
@@ -34,6 +34,7 @@ pub enum InfixOperator {
     Plus,
     Equals,
     NotEquals,
+    Multiply,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -224,6 +225,7 @@ impl<'a> Parser<'a> {
             InfixOperator::Plus => PRECEDENCE_SUM,
             InfixOperator::Equals => PRECEDENCE_EQUALS,
             InfixOperator::NotEquals => PRECEDENCE_EQUALS,
+            InfixOperator::Multiply => PRECEDENCE_PRODUCT,
         }
     }
 
@@ -234,8 +236,9 @@ impl<'a> Parser<'a> {
             Some(&&lexer::Token::Operator(lexer::Operator::Minus))
             | Some(&&lexer::Token::Operator(lexer::Operator::Plus)) => PRECEDENCE_SUM,
             Some(&&lexer::Token::Delimiter('(')) => PRECEDENCE_CALL,
-            Some(&&lexer::Token::Operator(Operator::Equals))
-            | Some(&&lexer::Token::Operator(Operator::NotEquals)) => PRECEDENCE_EQUALS,
+            Some(&&lexer::Token::Operator(lexer::Operator::Equals))
+            | Some(&&lexer::Token::Operator(lexer::Operator::NotEquals)) => PRECEDENCE_EQUALS,
+            Some(&&lexer::Token::Operator(lexer::Operator::Multiply)) => PRECEDENCE_PRODUCT,
             _ => PRECEDENCE_LOWEST,
         }
     }
@@ -322,7 +325,7 @@ impl<'a> Parser<'a> {
     ) -> Expression {
         let mut left_expression = match current_token {
             lexer::Token::Operator(operator)
-                if *operator == Operator::Minus || *operator == Operator::Bang =>
+                if *operator == lexer::Operator::Minus || *operator == lexer::Operator::Bang =>
             {
                 let next_token = self.tokens.next();
                 let right_expression = match next_token {
@@ -331,7 +334,7 @@ impl<'a> Parser<'a> {
                         .error_expression(String::from("Missing token while parsing expression")),
                 };
 
-                if *operator == Operator::Minus {
+                if *operator == lexer::Operator::Minus {
                     return Expression::Prefix(PrefixOperator::Minus, Box::new(right_expression));
                 }
 
@@ -339,34 +342,63 @@ impl<'a> Parser<'a> {
             }
             lexer::Token::Integer(integer) => Expression::Integer(integer.clone()),
             lexer::Token::Operator(_) => todo!(),
-            lexer::Token::Delimiter(_) => todo!(),
+            lexer::Token::Delimiter('(') => {
+                let current_token = self.tokens.next();
+
+                match current_token {
+                    Some(current_token) => {
+                        let delimited_expression =
+                            self.parse_expression_with_precedence(current_token, precedence);
+                        let peek_token = self.tokens.peek();
+
+                        match peek_token {
+                            Some(&&lexer::Token::Delimiter(')')) => {
+                                self.tokens.next();
+                                delimited_expression
+                            }
+                            _ => self.error_expression(String::from(
+                                "Unexpected token after group expression",
+                            )),
+                        }
+                    }
+                    None => self.error_expression(String::from(
+                        "Unexpected EOF after start of grouped expression",
+                    )),
+                }
+            }
             lexer::Token::Identifier(identifier) => Expression::Identifier(identifier.clone()),
             lexer::Token::Keyword(_) => todo!(),
             lexer::Token::Boolean(boolean) => Expression::Boolean(*boolean),
             lexer::Token::Illegal => todo!(),
             lexer::Token::Operator(_) => todo!(),
+            lexer::Token::Delimiter(_) => todo!(),
         };
 
         while self.is_peek_not_semicolon() && precedence < self.peek_precedence() {
             let peek_token = self.tokens.peek();
 
             match peek_token {
-                Some(&&lexer::Token::Operator(Operator::Minus)) => {
+                Some(&&lexer::Token::Operator(lexer::Operator::Minus)) => {
                     self.tokens.next();
                     left_expression =
                         self.parse_infix_expression(left_expression, InfixOperator::Minus);
                 }
-                Some(&&lexer::Token::Operator(Operator::Plus)) => {
+                Some(&&lexer::Token::Operator(lexer::Operator::Plus)) => {
                     self.tokens.next();
                     left_expression =
                         self.parse_infix_expression(left_expression, InfixOperator::Plus)
                 }
-                Some(&&lexer::Token::Operator(Operator::Equals)) => {
+                Some(&&lexer::Token::Operator(lexer::Operator::Multiply)) => {
+                    self.tokens.next();
+                    left_expression =
+                        self.parse_infix_expression(left_expression, InfixOperator::Multiply)
+                }
+                Some(&&lexer::Token::Operator(lexer::Operator::Equals)) => {
                     self.tokens.next();
                     left_expression =
                         self.parse_infix_expression(left_expression, InfixOperator::Equals);
                 }
-                Some(&&lexer::Token::Operator(Operator::NotEquals)) => {
+                Some(&&lexer::Token::Operator(lexer::Operator::NotEquals)) => {
                     self.tokens.next();
                     left_expression =
                         self.parse_infix_expression(left_expression, InfixOperator::NotEquals);
@@ -471,6 +503,18 @@ mod tests {
                     InfixOperator::Plus,
                     Box::new(Expression::Integer(String::from("100"))),
                     Box::new(Expression::Integer(String::from("50"))),
+                ),
+            ),
+            (
+                "(100 + 50) * 5",
+                Expression::Infix(
+                    InfixOperator::Multiply,
+                    Box::new(Expression::Infix(
+                        InfixOperator::Plus,
+                        Box::new(Expression::Integer(String::from("100"))),
+                        Box::new(Expression::Integer(String::from("50"))),
+                    )),
+                    Box::new(Expression::Integer(String::from("5"))),
                 ),
             ),
             (
