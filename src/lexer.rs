@@ -32,7 +32,7 @@ pub fn tokenize(str: &str) -> Tokens {
     let mut characters = str.chars().peekable();
     let valid_integer = Regex::new("^[0-9]+$").unwrap();
     let valid_alphanum = Regex::new("^[a-zA-Z0-9_]+$").unwrap();
-    let valid_keyword = Regex::new("^(if)$").unwrap();
+    let valid_keyword = Regex::new("^(if|fn)$").unwrap();
     let valid_delimiter = Regex::new("^(,|;|\\(|\\)|\\{|\\}|\\|)$").unwrap();
     let valid_boolean = Regex::new("^(true|false)$").unwrap();
 
@@ -186,16 +186,17 @@ mod tests {
 
     #[test]
     fn it_lexes_callable_assignment() {
-        let actual = tokenize("add = {|a, b| a + b }");
+        let actual = tokenize("add = fn(a, b) { a + b }");
         let expected = Tokens::from(vec![
             Token::Identifier(String::from("add")),
             Token::Operator(Operator::Assignment),
-            Token::Delimiter('{'),
-            Token::Delimiter('|'),
+            Token::Keyword(String::from("fn")),
+            Token::Delimiter('('),
             Token::Identifier(String::from("a")),
             Token::Delimiter(','),
             Token::Identifier(String::from("b")),
-            Token::Delimiter('|'),
+            Token::Delimiter(')'),
+            Token::Delimiter('{'),
             Token::Identifier(String::from("a")),
             Token::Operator(Operator::Plus),
             Token::Identifier(String::from("b")),

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::parser::{self, InfixOperator, PrefixOperator};
+use crate::parser::{self, Arguments, Block, Identifier, InfixOperator, PrefixOperator, Statement};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
@@ -8,6 +8,7 @@ pub enum Object {
     Integer(i32),
     Error(String),
     Boolean(bool),
+    Function(Arguments, Block, Environment),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -16,7 +17,8 @@ pub enum Result {
     Object(Object),
 }
 
-struct Environment {
+#[derive(Debug, PartialEq, Clone)]
+pub struct Environment {
     variables: HashMap<String, Object>,
 }
 
@@ -27,8 +29,8 @@ impl Environment {
         }
     }
 
-    fn get(&self, key: &String) -> Option<&Object> {
-        self.variables.get(key)
+    fn get(&self, key: &Identifier) -> Option<&Object> {
+        self.variables.get(&key.name)
     }
 
     fn set(&mut self, key: String, object: Object) {
@@ -110,6 +112,10 @@ impl Evaluator {
                 }
             }
             parser::Expression::Invalid(_) => todo!(),
+            parser::Expression::Function(arguments, block) => {
+                Object::Function(arguments, block, Environment::new())
+            }
+            parser::Expression::Block(_) => todo!(),
         }
     }
 
@@ -125,7 +131,6 @@ impl Evaluator {
                 self.environment.set(identifier, object);
                 Result::Void
             }
-            parser::Statement::Block(_) => todo!(),
             parser::Statement::Expression(expression) => {
                 Result::Object(self.eval_expression(expression))
             }
