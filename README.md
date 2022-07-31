@@ -27,7 +27,7 @@ Blocks have the following features:
 - Once called all declared variables in scope as properties
 - When the first parameter name of a block is `self` it always contains a reference to the  current running block. This can be used for recursive calls.
 ```
-factorial = {|self, a|
+factorial = fn(self, a) {
   if (a <= 1) {
     return 1;
   } else {
@@ -39,12 +39,12 @@ factorial(7);
 ```
 - Can be passed as arguments to other blocks
 ```
-apply = {|f, a| f(a) };
+apply = fn(f, a) { f(a) };
 apply(add5, 5) == 10;
 ```
 - blocks can be passed anonymously
 ```
-nums = map([1, 2, 3], {|a| a + 1 });
+nums = map([1, 2, 3], fn(a) { a + 1 });
 ```
 - blocks are coroutines and are also the concurrency primitive of Cauldron. Similar to Wren's Fibers or Lua's Coroutines with the ability to jump to other coroutines by name. 
 	- References 
@@ -54,17 +54,17 @@ nums = map([1, 2, 3], {|a| a + 1 });
 - Blocks can use `block.yield`  to yield execution back to the caller. This allows for creation of commonly used patterns like generators:
 ```
 block = import("block");
-fetch_item = {|self|
+fetch_item = fn(self) {
   pages = [
     "http://example.com/page1",
     "http://example.com/page2",
     "http://example.com/page3"
   ];
   
-  each(pages, {|page|
+  each(pages, fn(page) {
     const items = parse(page);
 
-    each(items, {|item|
+    each(items, fn(item) {
       if (valid(item)) {
         block.yield(
           {
@@ -79,18 +79,18 @@ fetch_item = {|self|
 
 items = [];
 
-while (!finished?(fetch_item)) {
+while(!finished?(fetch_item)) {
   push(items, fetch_item());
 }
 ```
 - blocks can also transfer control to other coroutines declared in the same scope
 ```
 block = import("block");
-pinger = {|self, ponger| 
+pinger = fn(self, ponger) { 
   print("ping");
   block.yield_to(ponger);
 };
-ponger = {|self|
+ponger = fn(self) {
   print("pong");
   block.yield_to(pinger);
 };
@@ -132,7 +132,7 @@ list = [1, 2, 3];
 - Exporting is performed by passing a block to the builtin `export` procedure. Calling `export` multiple times in a file is an error. Contents of `lib/math.cld`:
 ```
 export({
-   add = fn {|a, b| a + b};
+   add = fn(a, b) { a + b};
 });
 ```
 - The return value of the `import` function is always identical to the block passed to `export`. Relative import of `lib/math.cld` from within `bin/main.cld`:
@@ -145,7 +145,7 @@ print(math.add(1, 1));
 **Control Flow**
 - Conditionals must use `if` and optionally `else` keywords
 ```
-if (1 == 1) {
+if(1 == 1) {
   print("Equality works!");
 } else {
   print("Equality is broken :(");
