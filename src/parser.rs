@@ -41,14 +41,39 @@ pub enum InfixOperator {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Identifier {
+    pub name: String,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Function {
+    pub arguments: Arguments,
+    pub block: Block,
+}
+
+impl Function {
+    fn new(arguments: Arguments, block: Block) -> Self {
+        Self { arguments, block }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Callable {
+    Reference(Identifier),
+    Literal(Function),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Call(Box<Expression>, Vec<Expression>),
     Integer(String),
-    Identifier(String),
+    Identifier(Identifier),
     Boolean(bool),
     Prefix(PrefixOperator, Box<Expression>),
     Infix(InfixOperator, Box<Expression>, Box<Expression>),
     Invalid(Error),
+    Function(Function),
+    Block(Block),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -63,9 +88,14 @@ pub enum Block {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum Arguments {
+    Arguments(Vec<Identifier>),
+    Invalid(Error),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Assignment(String, Expression),
-    Block(Block),
     Expression(Expression),
     Conditional(Condition, Block),
     Invalid(Error),
@@ -141,7 +171,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_block_statement(&mut self, current_token: Option<&lexer::Token>) -> Statement {
-        Statement::Block(self.parse_block(current_token))
+        Statement::Expression(Expression::Block(self.parse_block(current_token)))
     }
 
     fn parse_block(&mut self, current_token: Option<&lexer::Token>) -> Block {
@@ -327,12 +357,35 @@ impl<'a> Parser<'a> {
         self.tokens.peek() != Some(&&lexer::Token::Delimiter(';'))
     }
 
-    fn parse_expression_with_precedence(
-        &mut self,
-        current_token: &lexer::Token,
-        precedence: u8,
-    ) -> Expression {
-        let mut left_expression = match current_token {
+    fn parse_arguments(&mut self) -> Arguments {
+        let mut identifiers = vec![];
+        let mut peek_token = self.tokens.peek();
+
+        while peek_token != Some(&&lexer::Token::Delimiter(')')) {
+            let current_token = self.tokens.next();
+            peek_token = self.tokens.peek();
+
+            match current_token {
+                Some(lexer::Token::Identifier(identifier)) => {
+                    identifiers.push(Identifier {
+                        name: identifier.clone(),
+                    });
+                }
+                Some(lexer::Token::Delimiter(',')) => {}
+                _ => {
+                    return Arguments::Invalid(Error {
+                        message: String::from("Invalid Arguments"),
+                    });
+                }
+            };
+        }
+
+        self.tokens.next();
+        Arguments::Arguments(identifiers)
+    }
+
+    fn parse_prefix_expression(&mut self, current_token: &lexer::Token) -> Expression {
+        match current_token {
             lexer::Token::Operator(operator)
                 if *operator == lexer::Operator::Minus || *operator == lexer::Operator::Bang =>
             {
@@ -375,13 +428,58 @@ impl<'a> Parser<'a> {
                     )),
                 }
             }
-            lexer::Token::Identifier(identifier) => Expression::Identifier(identifier.clone()),
+            lexer::Token::Identifier(identifier) => Expression::Identifier(Identifier {
+                name: identifier.clone(),
+            }),
+            lexer::Token::Keyword(_fn) if _fn == "fn" => {
+                let peek_token = self.tokens.peek();
+
+                match peek_token {
+                    Some(&&lexer::Token::Delimiter('(')) => {
+                        self.tokens.next();
+
+                        let arguments = self.parse_arguments();
+                        let peek_token = self.tokens.peek();
+
+                        if peek_token != Some(&&lexer::Token::Delimiter('{')) {
+                            return self.error_expression(String::from(
+                                "Missing open curly brace for containing consequence in conditional",
+                            ));
+                        }
+
+                        self.tokens.next();
+                        let next_token = self.tokens.next();
+                        let block = self.parse_block(next_token);
+
+                        Expression::Function(Function::new(arguments, block))
+                    }
+                    Some(invalid_token) => {
+                        let token = *invalid_token;
+
+                        self.error_expression(format!(
+                            "Invalid token while parsing 'fn' expression's arguments: {:?}",
+                            token
+                        ))
+                    }
+                    None => self.error_expression(String::from(
+                        "Missing condition and consequence of 'fn' expression",
+                    )),
+                }
+            }
             lexer::Token::Keyword(_) => todo!(),
             lexer::Token::Boolean(boolean) => Expression::Boolean(*boolean),
             lexer::Token::Illegal => todo!(),
             lexer::Token::Operator(_) => todo!(),
             lexer::Token::Delimiter(_) => todo!(),
-        };
+        }
+    }
+
+    fn parse_expression_with_precedence(
+        &mut self,
+        current_token: &lexer::Token,
+        precedence: u8,
+    ) -> Expression {
+        let mut left_expression = self.parse_prefix_expression(current_token);
 
         while self.is_peek_not_semicolon() && precedence < self.peek_precedence() {
             let peek_token = self.tokens.peek();
@@ -483,7 +581,7 @@ pub fn parse(tokens: lexer::Tokens) -> Program {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, Block, Condition, Program, Statement};
+    use super::{parse, Arguments, Block, Condition, Function, Identifier, Program, Statement};
     use crate::{
         lexer::tokenize,
         parser::{Expression, InfixOperator, PrefixOperator},
@@ -597,7 +695,9 @@ mod tests {
         assert_expression_eq(
             "print(1)",
             Expression::Call(
-                Box::new(Expression::Identifier(String::from("print"))),
+                Box::new(Expression::Identifier(Identifier {
+                    name: String::from("print"),
+                })),
                 vec![Expression::Integer(String::from("1"))],
             ),
         );
@@ -639,10 +739,39 @@ mod tests {
     fn it_parses_assignment_in_block_statement() {
         assert_statement_eq(
             "{ a = 1 }",
-            Statement::Block(Block::Statements(vec![Statement::Assignment(
-                String::from("a"),
-                Expression::Integer(String::from("1")),
-            )])),
+            Statement::Expression(Expression::Block(Block::Statements(vec![
+                Statement::Assignment(String::from("a"), Expression::Integer(String::from("1"))),
+            ]))),
+        );
+    }
+
+    #[test]
+    fn it_parses_functions_with_arguments() {
+        assert_statement_eq(
+            "fn(arg1, arg2) { print(arg1, arg2) }",
+            Statement::Expression(Expression::Function(Function::new(
+                Arguments::Arguments(vec![
+                    Identifier {
+                        name: String::from("arg1"),
+                    },
+                    Identifier {
+                        name: String::from("arg2"),
+                    },
+                ]),
+                Block::Statements(vec![Statement::Expression(Expression::Call(
+                    Box::new(Expression::Identifier(Identifier {
+                        name: String::from("print"),
+                    })),
+                    vec![
+                        Expression::Identifier(Identifier {
+                            name: String::from("arg1"),
+                        }),
+                        Expression::Identifier(Identifier {
+                            name: String::from("arg2"),
+                        }),
+                    ],
+                ))]),
+            ))),
         );
     }
 
@@ -653,7 +782,9 @@ mod tests {
             Statement::Conditional(
                 Condition::Expression(Expression::Integer(String::from("1"))),
                 Block::Statements(vec![Statement::Expression(Expression::Call(
-                    Box::new(Expression::Identifier(String::from("print"))),
+                    Box::new(Expression::Identifier(Identifier {
+                        name: String::from("print"),
+                    })),
                     vec![Expression::Integer(String::from("1"))],
                 ))]),
             ),
