@@ -46,6 +46,24 @@ pub struct Identifier {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Function {
+    pub arguments: Arguments,
+    pub block: Block,
+}
+
+impl Function {
+    fn new(arguments: Arguments, block: Block) -> Self {
+        Self { arguments, block }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Callable {
+    Reference(Identifier),
+    Literal(Function),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Call(Box<Expression>, Vec<Expression>),
     Integer(String),
@@ -54,7 +72,7 @@ pub enum Expression {
     Prefix(PrefixOperator, Box<Expression>),
     Infix(InfixOperator, Box<Expression>, Box<Expression>),
     Invalid(Error),
-    Function(Arguments, Block),
+    Function(Function),
     Block(Block),
 }
 
@@ -433,7 +451,7 @@ impl<'a> Parser<'a> {
                         let next_token = self.tokens.next();
                         let block = self.parse_block(next_token);
 
-                        Expression::Function(arguments, block)
+                        Expression::Function(Function::new(arguments, block))
                     }
                     Some(invalid_token) => {
                         let token = *invalid_token;
@@ -563,7 +581,7 @@ pub fn parse(tokens: lexer::Tokens) -> Program {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, Arguments, Block, Condition, Identifier, Program, Statement};
+    use super::{parse, Arguments, Block, Condition, Function, Identifier, Program, Statement};
     use crate::{
         lexer::tokenize,
         parser::{Expression, InfixOperator, PrefixOperator},
@@ -730,20 +748,30 @@ mod tests {
     #[test]
     fn it_parses_functions_with_arguments() {
         assert_statement_eq(
-            "fn(arg1) { print(arg1) }",
-            Statement::Expression(Expression::Function(
-                Arguments::Arguments(vec![Identifier {
-                    name: String::from("arg1"),
-                }]),
+            "fn(arg1, arg2) { print(arg1, arg2) }",
+            Statement::Expression(Expression::Function(Function::new(
+                Arguments::Arguments(vec![
+                    Identifier {
+                        name: String::from("arg1"),
+                    },
+                    Identifier {
+                        name: String::from("arg2"),
+                    },
+                ]),
                 Block::Statements(vec![Statement::Expression(Expression::Call(
                     Box::new(Expression::Identifier(Identifier {
                         name: String::from("print"),
                     })),
-                    vec![Expression::Identifier(Identifier {
-                        name: String::from("arg1"),
-                    })],
+                    vec![
+                        Expression::Identifier(Identifier {
+                            name: String::from("arg1"),
+                        }),
+                        Expression::Identifier(Identifier {
+                            name: String::from("arg2"),
+                        }),
+                    ],
                 ))]),
-            )),
+            ))),
         );
     }
 

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::parser::{self, Arguments, Block, Identifier, InfixOperator, PrefixOperator, Statement};
+use crate::parser::{
+    self, Arguments, Block, Function, Identifier, InfixOperator, PrefixOperator, Statement,
+};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
@@ -42,128 +44,119 @@ struct Evaluator {
     environment: Environment,
 }
 
-impl Evaluator {
-    fn new(environment: Environment) -> Self {
-        Self { environment }
-    }
+fn eval_expression(expression: parser::Expression, environment: &mut Environment) -> Object {
+    match expression {
+        parser::Expression::Call(identifier, arguments) => {
+            // let mut evaluated_arguments: Vec<Statement> = Vec::new();
 
-    fn eval_expression(&mut self, expression: parser::Expression) -> Object {
-        match expression {
-            parser::Expression::Call(_, _) => todo!(),
-            parser::Expression::Integer(integer) => {
-                let integer = integer.parse::<i32>();
+            // let function = eval_expression(expression, environment);
 
-                match integer {
-                    Ok(integer) => Object::Integer(integer),
-                    Err(parse_error) => Object::Error(format!("{:?}", parse_error)),
-                }
+            Object::Error(String::from("Evaluating call is not yet implemented"))
+        }
+        parser::Expression::Integer(integer) => {
+            let integer = integer.parse::<i32>();
+
+            match integer {
+                Ok(integer) => Object::Integer(integer),
+                Err(parse_error) => Object::Error(format!("{:?}", parse_error)),
             }
-            parser::Expression::Identifier(identifier) => match self.environment.get(&identifier) {
-                Some(object) => object.clone(),
-                None => Object::Error(format!(
-                    "Environment missing identifier {:?}",
-                    identifier.clone()
-                )),
-            },
-            parser::Expression::Boolean(boolean) => Object::Boolean(boolean),
-            parser::Expression::Prefix(prefix_operator, expression) => {
-                let right = self.eval_expression(*expression);
+        }
+        parser::Expression::Identifier(identifier) => match environment.get(&identifier) {
+            Some(object) => object.clone(),
+            None => Object::Error(format!(
+                "Environment missing identifier {:?}",
+                identifier.clone()
+            )),
+        },
+        parser::Expression::Boolean(boolean) => Object::Boolean(boolean),
+        parser::Expression::Prefix(prefix_operator, expression) => {
+            let right = eval_expression(*expression, environment);
 
-                match prefix_operator {
-                    PrefixOperator::Minus => todo!(),
-                    PrefixOperator::Bang => match right {
-                        Object::Boolean(true) => Object::Boolean(false),
-                        Object::Boolean(false) => Object::Boolean(true),
-                        _ => Object::Error(String::from(
-                            "Bang operator can only precede boolean expressions",
-                        )),
-                    },
-                }
-            }
-            parser::Expression::Infix(infix_operator, left_expression, right_expression) => {
-                let left_object = self.eval_expression(*left_expression);
-                let right_object = self.eval_expression(*right_expression);
-
-                match (left_object.clone(), right_object.clone()) {
-                    (Object::Integer(left_integer), Object::Integer(right_integer)) => {
-                        match infix_operator {
-                            InfixOperator::Minus => Object::Integer(left_integer - right_integer),
-                            InfixOperator::Plus => Object::Integer(left_integer + right_integer),
-                            InfixOperator::Equals => Object::Boolean(left_integer == right_integer),
-                            InfixOperator::NotEquals => {
-                                Object::Boolean(left_integer != right_integer)
-                            }
-                            InfixOperator::GreaterThan => {
-                                Object::Boolean(left_integer > right_integer)
-                            }
-                            InfixOperator::LessThan => {
-                                Object::Boolean(left_integer < right_integer)
-                            }
-                            InfixOperator::Multiply => {
-                                Object::Integer(left_integer * right_integer)
-                            }
-                            InfixOperator::Divide => Object::Integer(left_integer / right_integer),
-                        }
-                    }
-                    _ => Object::Error(format!(
-                        "Cannot subtract '{:?}' from '{:?}'",
-                        left_object, right_object
+            match prefix_operator {
+                PrefixOperator::Minus => todo!(),
+                PrefixOperator::Bang => match right {
+                    Object::Boolean(true) => Object::Boolean(false),
+                    Object::Boolean(false) => Object::Boolean(true),
+                    _ => Object::Error(String::from(
+                        "Bang operator can only precede boolean expressions",
                     )),
+                },
+            }
+        }
+        parser::Expression::Infix(infix_operator, left_expression, right_expression) => {
+            let left_object = eval_expression(*left_expression, environment);
+            let right_object = eval_expression(*right_expression, environment);
+
+            match (left_object.clone(), right_object.clone()) {
+                (Object::Integer(left_integer), Object::Integer(right_integer)) => {
+                    match infix_operator {
+                        InfixOperator::Minus => Object::Integer(left_integer - right_integer),
+                        InfixOperator::Plus => Object::Integer(left_integer + right_integer),
+                        InfixOperator::Equals => Object::Boolean(left_integer == right_integer),
+                        InfixOperator::NotEquals => Object::Boolean(left_integer != right_integer),
+                        InfixOperator::GreaterThan => Object::Boolean(left_integer > right_integer),
+                        InfixOperator::LessThan => Object::Boolean(left_integer < right_integer),
+                        InfixOperator::Multiply => Object::Integer(left_integer * right_integer),
+                        InfixOperator::Divide => Object::Integer(left_integer / right_integer),
+                    }
                 }
+                _ => Object::Error(format!(
+                    "Cannot subtract '{:?}' from '{:?}'",
+                    left_object, right_object
+                )),
             }
-            parser::Expression::Invalid(_) => todo!(),
-            parser::Expression::Function(arguments, block) => {
-                Object::Function(arguments, block, Environment::new())
-            }
-            parser::Expression::Block(_) => todo!(),
         }
-    }
-
-    fn eval_block(&mut self, block: parser::Block) -> Result {
-        Result::Void
-    }
-
-    fn eval_statement(&mut self, statement: parser::Statement) -> Result {
-        match statement {
-            parser::Statement::Assignment(identifier, expression) => {
-                let object = self.eval_expression(expression);
-
-                self.environment.set(identifier, object);
-                Result::Void
-            }
-            parser::Statement::Expression(expression) => {
-                Result::Object(self.eval_expression(expression))
-            }
-            parser::Statement::Conditional(
-                parser::Condition::Expression(condition_expression),
-                consequence,
-            ) => match self.eval_expression(condition_expression) {
-                Object::Boolean(true) => self.eval_block(consequence),
-                object => Result::Object(Object::Error(String::from(format!(
-                    "Condition expression must evalate to boolean, instead received {:?}",
-                    object
-                )))),
-            },
-            parser::Statement::Invalid(_) => todo!(),
+        parser::Expression::Invalid(_) => todo!(),
+        parser::Expression::Function(Function { arguments, block }) => {
+            Object::Function(arguments, block, Environment::new())
         }
+        parser::Expression::Block(_) => todo!(),
     }
+}
 
-    fn eval_statements(&mut self, statements: Vec<parser::Statement>) -> Result {
-        let mut object = Result::Void;
+fn eval_block(block: parser::Block) -> Result {
+    Result::Void
+}
 
-        for statement in statements {
-            object = self.eval_statement(statement);
+fn eval_statement(statement: parser::Statement, environment: &mut Environment) -> Result {
+    match statement {
+        parser::Statement::Assignment(identifier, expression) => {
+            let object = eval_expression(expression, environment);
+
+            environment.set(identifier, object);
+            Result::Void
         }
-
-        object
+        parser::Statement::Expression(expression) => {
+            Result::Object(eval_expression(expression, environment))
+        }
+        parser::Statement::Conditional(
+            parser::Condition::Expression(condition_expression),
+            consequence,
+        ) => match eval_expression(condition_expression, environment) {
+            Object::Boolean(true) => eval_block(consequence),
+            object => Result::Object(Object::Error(String::from(format!(
+                "Condition expression must evalate to boolean, instead received {:?}",
+                object
+            )))),
+        },
+        parser::Statement::Invalid(_) => todo!(),
     }
+}
+
+fn eval_statements(statements: Vec<parser::Statement>, environment: &mut Environment) -> Result {
+    let mut object = Result::Void;
+
+    for statement in statements {
+        object = eval_statement(statement, environment);
+    }
+
+    object
 }
 
 pub fn eval(program: parser::Program) -> Result {
     let mut environment = Environment::new();
-    let mut evaluator = Evaluator::new(environment);
 
-    evaluator.eval_statements(program.statements)
+    eval_statements(program.statements, &mut environment)
 }
 
 #[cfg(test)]
