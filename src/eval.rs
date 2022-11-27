@@ -25,7 +25,7 @@ pub struct Environment {
 }
 
 impl Environment {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             variables: HashMap::new(),
         }
@@ -114,8 +114,29 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
     }
 }
 
-fn eval_block(block: parser::Block) -> Result {
-    Result::Void
+fn eval_block(block: parser::Block, environment: &mut Environment) -> Result {
+    match block {
+        Block::Statements(statements) => {
+            for statement in statements {
+                match eval_statement(statement, environment) {
+                    Result::Object(Object::Error(error)) => {
+                        return Result::Object(Object::Error(String::from(format!(
+                            "Error occurred while evaluating statement in block: {:?}",
+                            error
+                        ))))
+                    }
+                    Result::Object(_) => continue,
+                    Result::Void => continue,
+                }
+            }
+
+            Result::Void
+        }
+        Block::Invalid(error) => Result::Object(Object::Error(String::from(format!(
+            "Cannot eval block due to parse error: {:?}",
+            error.message
+        )))),
+    }
 }
 
 fn eval_statement(statement: parser::Statement, environment: &mut Environment) -> Result {
@@ -133,7 +154,8 @@ fn eval_statement(statement: parser::Statement, environment: &mut Environment) -
             parser::Condition::Expression(condition_expression),
             consequence,
         ) => match eval_expression(condition_expression, environment) {
-            Object::Boolean(true) => eval_block(consequence),
+            Object::Boolean(true) => eval_block(consequence, environment),
+            Object::Boolean(false) => Result::Void,
             object => Result::Object(Object::Error(String::from(format!(
                 "Condition expression must evalate to boolean, instead received {:?}",
                 object
@@ -153,19 +175,19 @@ fn eval_statements(statements: Vec<parser::Statement>, environment: &mut Environ
     object
 }
 
-pub fn eval(program: parser::Program) -> Result {
-    let mut environment = Environment::new();
-
-    eval_statements(program.statements, &mut environment)
+pub fn eval(program: parser::Program, environment: &mut Environment) -> Result {
+    eval_statements(program.statements, environment)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{eval, Object, Result};
+    use super::{eval, Environment, Object, Result};
     use crate::{lexer::tokenize, parser::parse};
 
     fn assert_evaluated_object(code: &str, object: Object) {
-        let actual = eval(parse(tokenize(code)));
+        let parsed = parse(tokenize(code));
+        let mut environment = Environment::new();
+        let actual = eval(parsed, &mut environment);
 
         assert_eq!(actual, Result::Object(object));
     }
@@ -248,5 +270,32 @@ mod tests {
     #[test]
     fn it_evaluates_assignment_statements() {
         assert_evaluated_object("a = 1; a", Object::Integer(1));
+    }
+
+    #[test]
+    fn it_evaluates_conditional_statements_truthy() {
+        let code = "if (true) { a = 1; b = 2 }";
+        let parsed = parse(tokenize(code));
+        let mut environment = Environment::new();
+        let actual = eval(parsed, &mut environment);
+        let mut expected_environment = Environment::new();
+
+        expected_environment.set(String::from("a"), Object::Integer(1));
+        expected_environment.set(String::from("b"), Object::Integer(2));
+
+        assert_eq!(actual, Result::Void);
+        assert_eq!(environment, expected_environment);
+    }
+
+    #[test]
+    fn it_evaluates_conditional_statements_falsey() {
+        let code = "if (false) { a = 1; b = 2 }";
+        let parsed = parse(tokenize(code));
+        let mut environment = Environment::new();
+        let actual = eval(parsed, &mut environment);
+        let expected_environment = Environment::new();
+
+        assert_eq!(actual, Result::Void);
+        assert_eq!(environment, expected_environment);
     }
 }

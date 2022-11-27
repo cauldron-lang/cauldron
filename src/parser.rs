@@ -19,7 +19,7 @@ const PRECEDENCE_CALL: u8 = 6;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Error {
-    message: String,
+    pub message: String,
 }
 
 #[derive(Debug, PartialEq, Clone)]
