@@ -3,6 +3,8 @@ use std::io;
 use std::io::stdout;
 use std::io::Write;
 
+use crate::eval::Environment;
+
 pub mod eval;
 pub mod lexer;
 pub mod parser;
@@ -41,7 +43,8 @@ fn print_loop(subcommand: SubCommand) {
             SubCommand::ReadLexPrintLoop => println!("{:?}", tokens),
             SubCommand::ReadParsePrintLoop => println!("{:?}", parser::parse(tokens)),
             SubCommand::ReadEvaluatePrintLoop => {
-                println!("{:?}", eval::eval(parser::parse(tokens)))
+                let mut environment = Environment::new();
+                println!("{:?}", eval::eval(parser::parse(tokens), &mut environment))
             }
         }
     }
