@@ -10,6 +10,7 @@ pub enum Object {
     Integer(i32),
     Error(String),
     Boolean(bool),
+    // FIXME: Arguments should be renamed to Parameters here
     Function(Arguments, Block, Environment),
 }
 
@@ -40,19 +41,56 @@ impl Environment {
     }
 }
 
-struct Evaluator {
-    environment: Environment,
-}
-
 fn eval_expression(expression: parser::Expression, environment: &mut Environment) -> Object {
     match expression {
-        parser::Expression::Call(identifier, arguments) => {
-            // let mut evaluated_arguments: Vec<Statement> = Vec::new();
+        parser::Expression::Call(identifier, arguments) => match *identifier {
+            parser::Expression::Identifier(identifier) => {
+                match environment.clone().get(&identifier) {
+                    Some(object) => match object {
+                        Object::Function(parameters, block, enclosed_environment) => {
+                            match parameters {
+                                Arguments::Arguments(parameters) => {
+                                    let environment_variables =
+                                        parameters.iter().zip(arguments.iter());
+                                    let mut new_enclosed_environment = enclosed_environment.clone();
 
-            // let function = eval_expression(expression, environment);
+                                    for (_i, (identifier, expression)) in
+                                        environment_variables.enumerate()
+                                    {
+                                        new_enclosed_environment.set(
+                                            identifier.clone().name,
+                                            eval_expression(expression.clone(), environment),
+                                        )
+                                    }
 
-            Object::Error(String::from("Evaluating call is not yet implemented"))
-        }
+                                    match eval_block(block.clone(), &mut new_enclosed_environment) {
+                                        Result::Object(retval) => retval,
+                                        Result::Void => Object::Void,
+                                    }
+                                }
+                                Arguments::Invalid(error) => Object::Error(format!(
+                                    "Cannot call function with invalid parameters: {:?}",
+                                    error
+                                )),
+                            }
+                        }
+                        other => Object::Error(format!("Object is not callable: {:?}", other)),
+                    },
+                    None => Object::Error(format!(
+                        "Cannot call function that doesn't exist with identifier: {:?}",
+                        identifier
+                    )),
+                }
+            }
+            other => {
+                // FIXME: This should not be possible assuming the parser is working properly.
+                // Can the parser be changed to reduce the need for this extra logic.
+                Object::Error(format!(
+                    "Parsed the following non-identifier token as callable: {:?}",
+                    other
+                ))
+            }
+        },
         parser::Expression::Integer(integer) => {
             let integer = integer.parse::<i32>();
 
@@ -108,7 +146,7 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
         }
         parser::Expression::Invalid(_) => todo!(),
         parser::Expression::Function(Function { arguments, block }) => {
-            Object::Function(arguments, block, Environment::new())
+            Object::Function(arguments, block, environment.clone())
         }
         parser::Expression::Block(_) => todo!(),
     }
@@ -117,6 +155,8 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
 fn eval_block(block: parser::Block, environment: &mut Environment) -> Result {
     match block {
         Block::Statements(statements) => {
+            let mut retval = Result::Void;
+
             for statement in statements {
                 match eval_statement(statement, environment) {
                     Result::Object(Object::Error(error)) => {
@@ -125,12 +165,18 @@ fn eval_block(block: parser::Block, environment: &mut Environment) -> Result {
                             error
                         ))))
                     }
-                    Result::Object(_) => continue,
-                    Result::Void => continue,
+                    Result::Object(object) => {
+                        retval = Result::Object(object);
+                        continue;
+                    }
+                    Result::Void => {
+                        retval = Result::Void;
+                        continue;
+                    }
                 }
             }
 
-            Result::Void
+            retval
         }
         Block::Invalid(error) => Result::Object(Object::Error(String::from(format!(
             "Cannot eval block due to parse error: {:?}",
@@ -154,7 +200,10 @@ fn eval_statement(statement: parser::Statement, environment: &mut Environment) -
             parser::Condition::Expression(condition_expression),
             consequence,
         ) => match eval_expression(condition_expression, environment) {
-            Object::Boolean(true) => eval_block(consequence, environment),
+            Object::Boolean(true) => {
+                eval_block(consequence, environment);
+                Result::Void
+            }
             Object::Boolean(false) => Result::Void,
             object => Result::Object(Object::Error(String::from(format!(
                 "Condition expression must evalate to boolean, instead received {:?}",
@@ -297,5 +346,12 @@ mod tests {
 
         assert_eq!(actual, Result::Void);
         assert_eq!(environment, expected_environment);
+    }
+
+    #[test]
+    fn it_evaluates_function_application() {
+        let code = "add = fn(a, b) { a + b }; add(1, 1)";
+
+        assert_evaluated_object(code, Object::Integer(2));
     }
 }
