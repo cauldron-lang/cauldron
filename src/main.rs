@@ -28,6 +28,8 @@ fn main() {
 }
 
 fn print_loop(subcommand: SubCommand) {
+    let mut environment = Environment::new();
+
     loop {
         print!("> ");
         stdout().flush().expect("Failed to write to stdout");
@@ -43,7 +45,6 @@ fn print_loop(subcommand: SubCommand) {
             SubCommand::ReadLexPrintLoop => println!("{:?}", tokens),
             SubCommand::ReadParsePrintLoop => println!("{:?}", parser::parse(tokens)),
             SubCommand::ReadEvaluatePrintLoop => {
-                let mut environment = Environment::new();
                 println!("{:?}", eval::eval(parser::parse(tokens), &mut environment))
             }
         }
