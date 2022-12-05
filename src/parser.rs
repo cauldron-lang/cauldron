@@ -68,6 +68,7 @@ pub enum Expression {
     Call(Box<Expression>, Vec<Expression>),
     Integer(String),
     Identifier(Identifier),
+    String(String),
     Boolean(bool),
     Prefix(PrefixOperator, Box<Expression>),
     Infix(InfixOperator, Box<Expression>, Box<Expression>),
@@ -386,7 +387,7 @@ impl<'a> Parser<'a> {
 
     fn parse_prefix_expression(&mut self, current_token: &lexer::Token) -> Expression {
         match current_token {
-            lexer::Token::String(string) => todo!(),
+            lexer::Token::String(string) => Expression::String(string.clone()),
             lexer::Token::Operator(operator)
                 if *operator == lexer::Operator::Minus || *operator == lexer::Operator::Bang =>
             {
@@ -790,5 +791,13 @@ mod tests {
                 ))]),
             ),
         );
+    }
+
+    #[test]
+    fn it_parses_string_assignment() {
+        assert_statement_eq(
+            "foo = \"bar\"",
+            Statement::Assignment(String::from("foo"), Expression::String(String::from("bar"))),
+        )
     }
 }

@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 
-use crate::parser::{
-    self, Arguments, Block, Function, Identifier, InfixOperator, PrefixOperator, Statement,
-};
+use crate::parser::{self, Arguments, Block, Function, Identifier, InfixOperator, PrefixOperator};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
     Void,
     Integer(i32),
+    String(String),
     Error(String),
     Boolean(bool),
     // FIXME: Arguments should be renamed to Parameters here
@@ -43,6 +42,7 @@ impl Environment {
 
 fn eval_expression(expression: parser::Expression, environment: &mut Environment) -> Object {
     match expression {
+        parser::Expression::String(string) => Object::String(string),
         parser::Expression::Call(identifier, arguments) => match *identifier {
             parser::Expression::Identifier(identifier) => {
                 match environment.clone().get(&identifier) {
@@ -138,9 +138,19 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
                         InfixOperator::Divide => Object::Integer(left_integer / right_integer),
                     }
                 }
+                (Object::String(left_string), Object::String(right_string)) => match infix_operator
+                {
+                    InfixOperator::Plus => {
+                        Object::String(format!("{}{}", left_string, right_string))
+                    }
+                    _ => Object::Error(format!(
+                        "Cannot use operator '{:?}' between '{:?}' and '{:?}'",
+                        infix_operator, left_object, right_object
+                    )),
+                },
                 _ => Object::Error(format!(
-                    "Cannot subtract '{:?}' from '{:?}'",
-                    left_object, right_object
+                    "Cannot use operator '{:?}' between '{:?}' and '{:?}'",
+                    infix_operator, left_object, right_object
                 )),
             }
         }
@@ -317,8 +327,18 @@ mod tests {
     }
 
     #[test]
+    fn it_evaluates_adding_strings() {
+        assert_evaluated_object("\"foo\" + \"bar\"", Object::String(String::from("foobar")))
+    }
+
+    #[test]
     fn it_evaluates_assignment_statements() {
         assert_evaluated_object("a = 1; a", Object::Integer(1));
+    }
+
+    #[test]
+    fn it_evaluates_string_assignment_statements() {
+        assert_evaluated_object("foo = \"bar\"; foo", Object::String(String::from("bar")))
     }
 
     #[test]
