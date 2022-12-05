@@ -386,6 +386,7 @@ impl<'a> Parser<'a> {
 
     fn parse_prefix_expression(&mut self, current_token: &lexer::Token) -> Expression {
         match current_token {
+            lexer::Token::String(string) => todo!(),
             lexer::Token::Operator(operator)
                 if *operator == lexer::Operator::Minus || *operator == lexer::Operator::Bang =>
             {

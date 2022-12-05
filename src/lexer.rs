@@ -22,6 +22,7 @@ pub enum Token {
     Boolean(bool),
     Identifier(String),
     Keyword(String),
+    String(String),
     Illegal,
 }
 
@@ -41,6 +42,26 @@ pub fn tokenize(str: &str) -> Tokens {
         let peek = characters.peek();
 
         match current {
+            Some('"') => {
+                let mut buffer = String::new();
+
+                loop {
+                    let current = characters.next();
+
+                    match current {
+                        Some('"') => {
+                            tokens.push(Token::String(buffer));
+                            break;
+                        }
+                        Some(char) => buffer.push(char.clone()),
+                        None => {
+                            // Unexpected end of string without closing paren
+                            tokens.push(Token::Illegal);
+                            break;
+                        }
+                    }
+                }
+            }
             Some(' ') => continue,
             Some('=') => {
                 if peek == Some(&'=') {
@@ -306,5 +327,15 @@ mod tests {
                 Token::Integer(String::from("5")),
             ],
         );
+    }
+
+    #[test]
+    fn it_lexes_strings() {
+        assert_tokens_eq("\"foobar\"", vec![Token::String(String::from("foobar"))])
+    }
+
+    #[test]
+    fn it_lexes_illegal_strings() {
+        assert_tokens_eq("\"foobar", vec![Token::Illegal])
     }
 }

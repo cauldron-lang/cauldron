@@ -354,4 +354,11 @@ mod tests {
 
         assert_evaluated_object(code, Object::Integer(2));
     }
+
+    #[test]
+    fn it_evaluates_passing_functions_as_arguments() {
+        let code = "ap = fn(f, i) { f(i) }; ap(fn(a) { a + 1 }, 1)";
+
+        assert_evaluated_object(code, Object::Integer(2));
+    }
 }
