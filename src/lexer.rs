@@ -34,7 +34,7 @@ pub fn tokenize(str: &str) -> Tokens {
     let valid_integer = Regex::new("^[0-9]+$").unwrap();
     let valid_alphanum = Regex::new("^[a-zA-Z0-9_]+$").unwrap();
     let valid_keyword = Regex::new("^(if|fn)$").unwrap();
-    let valid_delimiter = Regex::new("^(,|;|\\(|\\)|\\{|\\}|\\|)$").unwrap();
+    let valid_delimiter = Regex::new("^(,|;|\\(|\\)|\\{|\\}|\\[|\\]|\\|)$").unwrap();
     let valid_boolean = Regex::new("^(true|false)$").unwrap();
 
     loop {
@@ -337,5 +337,17 @@ mod tests {
     #[test]
     fn it_lexes_illegal_strings() {
         assert_tokens_eq("\"foobar", vec![Token::Illegal])
+    }
+
+    #[test]
+    fn it_lexes_vectors() {
+        assert_tokens_eq(
+            "[1]",
+            vec![
+                Token::Delimiter('['),
+                Token::Integer(String::from("1")),
+                Token::Delimiter(']'),
+            ],
+        )
     }
 }

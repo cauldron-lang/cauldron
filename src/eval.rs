@@ -11,6 +11,7 @@ pub enum Object {
     Boolean(bool),
     // FIXME: Arguments should be renamed to Parameters here
     Function(Arguments, Block, Environment),
+    Vector(Vec<Object>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -159,6 +160,18 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
             Object::Function(arguments, block, environment.clone())
         }
         parser::Expression::Block(_) => todo!(),
+        parser::Expression::Vector(vector) => match vector {
+            parser::Vector::Expressions(items) => {
+                let mut vector = Vec::new();
+
+                for item in items.iter() {
+                    vector.push(eval_expression(item.clone(), environment));
+                }
+
+                Object::Vector(vector)
+            }
+            parser::Vector::Invalid(_) => todo!(),
+        },
     }
 }
 
@@ -380,5 +393,42 @@ mod tests {
         let code = "ap = fn(f, i) { f(i) }; ap(fn(a) { a + 1 }, 1)";
 
         assert_evaluated_object(code, Object::Integer(2));
+    }
+
+    #[test]
+    fn it_evaluates_vectors_of_integers() {
+        let code = "[1, 2, 3]";
+
+        assert_evaluated_object(
+            code,
+            Object::Vector(vec![
+                Object::Integer(1),
+                Object::Integer(2),
+                Object::Integer(3),
+            ]),
+        )
+    }
+
+    #[test]
+    fn it_parses_vector_of_arithmetic_expressions() {
+        let code = "[1 + 1, 3 - 1]";
+
+        assert_evaluated_object(
+            code,
+            Object::Vector(vec![Object::Integer(2), Object::Integer(2)]),
+        )
+    }
+
+    #[test]
+    fn it_evaluates_vectors_of_strings() {
+        let code = "[\"foo\", \"bar\"]";
+
+        assert_evaluated_object(
+            code,
+            Object::Vector(vec![
+                Object::String(String::from("foo")),
+                Object::String(String::from("bar")),
+            ]),
+        );
     }
 }

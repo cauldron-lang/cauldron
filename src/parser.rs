@@ -75,6 +75,7 @@ pub enum Expression {
     Invalid(Error),
     Function(Function),
     Block(Block),
+    Vector(Vector),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -85,6 +86,12 @@ pub enum Condition {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Block {
     Statements(Vec<Statement>),
+    Invalid(Error),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Vector {
+    Expressions(Vec<Expression>),
     Invalid(Error),
 }
 
@@ -304,6 +311,56 @@ impl<'a> Parser<'a> {
         )
     }
 
+    fn parse_vector_expression(&mut self) -> Expression {
+        let peek_token = self.tokens.peek();
+        let mut items: Vec<Expression> = Vec::new();
+
+        if peek_token == Some(&&lexer::Token::Delimiter(']')) {
+            self.tokens.next();
+            return Expression::Vector(Vector::Expressions(items));
+        }
+
+        let current_token = self.tokens.next();
+
+        match current_token {
+            Some(token) => {
+                items.push(self.parse_expression_with_precedence(token, PRECEDENCE_LOWEST));
+
+                while self.tokens.peek() == Some(&&lexer::Token::Delimiter(',')) {
+                    self.tokens.next();
+                    let token_after_comma = self.tokens.next();
+
+                    match token_after_comma {
+                        Some(token_after_comma) => {
+                            items.push(self.parse_expression_with_precedence(
+                                token_after_comma,
+                                PRECEDENCE_LOWEST,
+                            ));
+                        }
+                        None => {
+                            return self.error_expression(String::from(
+                                "Unexpected end of items in vector",
+                            ))
+                        }
+                    }
+                }
+
+                let closing_brace = self.tokens.next();
+
+                if closing_brace != Some(&&lexer::Token::Delimiter(']')) {
+                    return self.error_expression(String::from(
+                        "Missing closing bracket after items in vector",
+                    ));
+                }
+
+                Expression::Vector(Vector::Expressions(items))
+            }
+            None => {
+                self.error_expression(String::from("Error parsing arguments when calling block"))
+            }
+        }
+    }
+
     fn parse_call_expression(&mut self, block_identifier: Expression) -> Expression {
         let peek_token = self.tokens.peek();
         let mut arguments: Vec<Expression> = Vec::new();
@@ -430,6 +487,7 @@ impl<'a> Parser<'a> {
                     )),
                 }
             }
+            lexer::Token::Delimiter('[') => self.parse_vector_expression(),
             lexer::Token::Identifier(identifier) => Expression::Identifier(Identifier {
                 name: identifier.clone(),
             }),
@@ -583,7 +641,9 @@ pub fn parse(tokens: lexer::Tokens) -> Program {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, Arguments, Block, Condition, Function, Identifier, Program, Statement};
+    use super::{
+        parse, Arguments, Block, Condition, Function, Identifier, Program, Statement, Vector,
+    };
     use crate::{
         lexer::tokenize,
         parser::{Expression, InfixOperator, PrefixOperator},
@@ -798,6 +858,57 @@ mod tests {
         assert_statement_eq(
             "foo = \"bar\"",
             Statement::Assignment(String::from("foo"), Expression::String(String::from("bar"))),
+        )
+    }
+
+    #[test]
+    fn it_parses_empty_vector() {
+        assert_statement_eq(
+            "[]",
+            Statement::Expression(Expression::Vector(Vector::Expressions(vec![]))),
+        )
+    }
+
+    #[test]
+    fn it_parses_vector_of_integers() {
+        assert_statement_eq(
+            "[1, 2, 3, 4]",
+            Statement::Expression(Expression::Vector(Vector::Expressions(vec![
+                Expression::Integer(String::from("1")),
+                Expression::Integer(String::from("2")),
+                Expression::Integer(String::from("3")),
+                Expression::Integer(String::from("4")),
+            ]))),
+        )
+    }
+
+    #[test]
+    fn it_parses_vector_of_strings() {
+        assert_statement_eq(
+            "[\"foo\", \"bar\"]",
+            Statement::Expression(Expression::Vector(Vector::Expressions(vec![
+                Expression::String(String::from("foo")),
+                Expression::String(String::from("bar")),
+            ]))),
+        )
+    }
+
+    #[test]
+    fn it_parses_vector_of_arithmetic_expressions() {
+        assert_statement_eq(
+            "[1 + 1, 3 - 1]",
+            Statement::Expression(Expression::Vector(Vector::Expressions(vec![
+                Expression::Infix(
+                    InfixOperator::Plus,
+                    Box::new(Expression::Integer(String::from("1"))),
+                    Box::new(Expression::Integer(String::from("1"))),
+                ),
+                Expression::Infix(
+                    InfixOperator::Minus,
+                    Box::new(Expression::Integer(String::from("3"))),
+                    Box::new(Expression::Integer(String::from("1"))),
+                ),
+            ]))),
         )
     }
 }
