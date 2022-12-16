@@ -1,4 +1,4 @@
-use std::{iter::Peekable, slice::Iter};
+use std::{collections::HashMap, iter::Peekable, slice::Iter};
 
 use crate::lexer;
 
@@ -40,7 +40,7 @@ pub enum InfixOperator {
     Divide,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct Identifier {
     pub name: String,
 }
@@ -92,6 +92,12 @@ pub enum Block {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Vector {
     Expressions(Vec<Expression>),
+    Invalid(Error),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Map {
+    Expressions(HashMap<Identifier, Expression>),
     Invalid(Error),
 }
 
@@ -311,6 +317,10 @@ impl<'a> Parser<'a> {
         )
     }
 
+    fn parse_map_expression(&mut self) -> Expression {
+        todo!("PARSE MAPS")
+    }
+
     fn parse_vector_expression(&mut self) -> Expression {
         let peek_token = self.tokens.peek();
         let mut items: Vec<Expression> = Vec::new();
@@ -487,6 +497,20 @@ impl<'a> Parser<'a> {
                     )),
                 }
             }
+            lexer::Token::MapInitializer('%') => {
+                let peek_token = self.tokens.peek();
+
+                match peek_token {
+                    Some(&&lexer::Token::Delimiter('[')) => self.parse_map_expression(),
+                    Some(token) => self.error_expression(format!(
+                        "Unexpected token after map initializer: {:?}",
+                        token
+                    )),
+                    None => {
+                        self.error_expression(String::from("Missing token after map initializer"))
+                    }
+                }
+            }
             lexer::Token::Delimiter('[') => self.parse_vector_expression(),
             lexer::Token::Identifier(identifier) => Expression::Identifier(Identifier {
                 name: identifier.clone(),
@@ -531,6 +555,8 @@ impl<'a> Parser<'a> {
             lexer::Token::Illegal => todo!(),
             lexer::Token::Operator(_) => todo!(),
             lexer::Token::Delimiter(_) => todo!(),
+            lexer::Token::MapInitializer(_) => todo!(),
+            lexer::Token::MapKeySuffix(_) => todo!(),
         }
     }
 
@@ -908,6 +934,17 @@ mod tests {
                     Box::new(Expression::Integer(String::from("3"))),
                     Box::new(Expression::Integer(String::from("1"))),
                 ),
+            ]))),
+        )
+    }
+
+    #[test]
+    fn it_parses_map_of_strings() {
+        assert_statement_eq(
+            "%[foo: \"bar\"]",
+            Statement::Expression(Expression::Vector(Vector::Expressions(vec![
+                Expression::String(String::from("foo")),
+                Expression::String(String::from("bar")),
             ]))),
         )
     }

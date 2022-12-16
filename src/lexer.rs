@@ -16,14 +16,16 @@ pub enum Operator {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
-    Operator(Operator),
-    Delimiter(char),
-    Integer(String),
     Boolean(bool),
+    Delimiter(char),
     Identifier(String),
-    Keyword(String),
-    String(String),
     Illegal,
+    Integer(String),
+    Keyword(String),
+    MapInitializer(char),
+    MapKeySuffix(char),
+    Operator(Operator),
+    String(String),
 }
 
 pub type Tokens = Vec<Token>;
@@ -85,6 +87,8 @@ pub fn tokenize(str: &str) -> Tokens {
             Some('*') => tokens.push(Token::Operator(Operator::Multiply)),
             Some('>') => tokens.push(Token::Operator(Operator::GreaterThan)),
             Some('<') => tokens.push(Token::Operator(Operator::LessThan)),
+            Some('%') => tokens.push(Token::MapInitializer('%')),
+            Some(':') => tokens.push(Token::MapKeySuffix(':')),
             Some(delimiter) if valid_delimiter.is_match(String::from(delimiter).as_str()) => {
                 tokens.push(Token::Delimiter(delimiter))
             }
@@ -346,6 +350,21 @@ mod tests {
             vec![
                 Token::Delimiter('['),
                 Token::Integer(String::from("1")),
+                Token::Delimiter(']'),
+            ],
+        )
+    }
+
+    #[test]
+    fn it_lexes_maps() {
+        assert_tokens_eq(
+            "%[foo: \"bar\"]",
+            vec![
+                Token::MapInitializer('%'),
+                Token::Delimiter('['),
+                Token::Identifier(String::from("foo")),
+                Token::MapKeySuffix(':'),
+                Token::String(String::from("bar")),
                 Token::Delimiter(']'),
             ],
         )
