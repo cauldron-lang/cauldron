@@ -2,6 +2,11 @@ use std::collections::HashMap;
 
 use crate::parser::{self, Arguments, Block, Function, Identifier, InfixOperator, PrefixOperator};
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct MapKey {
+    name: String,
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Object {
     Void,
@@ -12,6 +17,7 @@ pub enum Object {
     // FIXME: Arguments should be renamed to Parameters here
     Function(Arguments, Block, Environment),
     Vector(Vec<Object>),
+    Map(HashMap<MapKey, Box<Object>>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -172,6 +178,23 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
             }
             parser::Vector::Invalid(_) => todo!(),
         },
+        parser::Expression::Map(map_expression) => match map_expression {
+            parser::Map::Expressions(map) => {
+                let mut new_map: HashMap<MapKey, Box<Object>> = HashMap::new();
+
+                for (key, val) in map.iter() {
+                    new_map.insert(
+                        MapKey {
+                            name: key.name.clone(),
+                        },
+                        Box::new(eval_expression(val.clone(), environment)),
+                    );
+                }
+
+                Object::Map(new_map)
+            }
+            parser::Map::Invalid(_) => todo!(),
+        },
     }
 }
 
@@ -253,7 +276,9 @@ pub fn eval(program: parser::Program, environment: &mut Environment) -> Result {
 
 #[cfg(test)]
 mod tests {
-    use super::{eval, Environment, Object, Result};
+    use std::collections::HashMap;
+
+    use super::{eval, Environment, MapKey, Object, Result};
     use crate::{lexer::tokenize, parser::parse};
 
     fn assert_evaluated_object(code: &str, object: Object) {
@@ -429,6 +454,21 @@ mod tests {
                 Object::String(String::from("foo")),
                 Object::String(String::from("bar")),
             ]),
+        );
+    }
+
+    #[test]
+    fn it_evaluates_maps_of_strings() {
+        let code = "%[foo: \"bar\"]";
+
+        assert_evaluated_object(
+            code,
+            Object::Map(HashMap::from([(
+                MapKey {
+                    name: String::from("foo"),
+                },
+                Box::new(Object::String(String::from("bar"))),
+            )])),
         );
     }
 }
