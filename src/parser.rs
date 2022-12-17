@@ -331,8 +331,6 @@ impl<'a> Parser<'a> {
         let next_token = self.tokens.next();
         let next_next_token = self.tokens.next();
 
-        print!("{:?}", (current_token, next_token, next_next_token));
-
         match (current_token, next_token, next_next_token) {
             (
                 Some(lexer::Token::Identifier(identifier)),
