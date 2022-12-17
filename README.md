@@ -53,7 +53,7 @@ integers = [1, 2, 3];
 #### Maps
 Maps are a labeled group of related data keyed by property. Properties are accessible via the `.` operator. Creating a map can be done using the following literal:
 ```
-{ foo: "bar", fizz: "buzz" }
+map = %[foo: "bar", fizz: "buzz"]
 ```
 
 ### Control Flow

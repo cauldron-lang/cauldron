@@ -1,4 +1,4 @@
-use std::{iter::Peekable, slice::Iter};
+use std::{collections::HashMap, iter::Peekable, slice::Iter};
 
 use crate::lexer;
 
@@ -40,7 +40,7 @@ pub enum InfixOperator {
     Divide,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct Identifier {
     pub name: String,
 }
@@ -76,6 +76,7 @@ pub enum Expression {
     Function(Function),
     Block(Block),
     Vector(Vector),
+    Map(Map),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -92,6 +93,12 @@ pub enum Block {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Vector {
     Expressions(Vec<Expression>),
+    Invalid(Error),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Map {
+    Expressions(HashMap<Identifier, Expression>),
     Invalid(Error),
 }
 
@@ -311,6 +318,98 @@ impl<'a> Parser<'a> {
         )
     }
 
+    fn parse_map_expression(&mut self) -> Expression {
+        let peek_token = self.tokens.peek();
+        let mut map: HashMap<Identifier, Expression> = HashMap::new();
+
+        if peek_token == Some(&&lexer::Token::Delimiter(']')) {
+            self.tokens.next();
+            return Expression::Map(Map::Expressions(map));
+        }
+
+        let current_token = self.tokens.next();
+        let next_token = self.tokens.next();
+        let next_next_token = self.tokens.next();
+
+        match (current_token, next_token, next_next_token) {
+            (
+                Some(lexer::Token::Identifier(identifier)),
+                Some(lexer::Token::MapKeySuffix(':')),
+                Some(token),
+            ) => {
+                let expression = self.parse_expression_with_precedence(token, PRECEDENCE_LOWEST);
+
+                map.insert(
+                    Identifier {
+                        name: identifier.clone(),
+                    },
+                    expression,
+                );
+
+                while self.tokens.peek() == Some(&&lexer::Token::Delimiter(',')) {
+                    self.tokens.next();
+                    let token_after_comma = self.tokens.next();
+                    let next_token_after_comma = self.tokens.next();
+                    let next_next_token_after_comma = self.tokens.next();
+
+                    match (
+                        token_after_comma,
+                        next_token_after_comma,
+                        next_next_token_after_comma,
+                    ) {
+                        (
+                            Some(lexer::Token::Identifier(identifier)),
+                            Some(lexer::Token::MapKeySuffix(':')),
+                            Some(token),
+                        ) => {
+                            let expression =
+                                self.parse_expression_with_precedence(token, PRECEDENCE_LOWEST);
+
+                            map.insert(
+                                Identifier {
+                                    name: identifier.clone(),
+                                },
+                                expression,
+                            );
+                        }
+                        (Some(token), _, _) => {
+                            let message = format!(
+                                "Identifier expected after map literal initializer, received: {:?}",
+                                token
+                            );
+
+                            return self.error_expression(message);
+                        }
+                        (None, _, _) => {
+                            return self.error_expression(String::from("Unexpected end of map"));
+                        }
+                    }
+                }
+
+                let closing_brace = self.tokens.next();
+
+                if closing_brace != Some(&&lexer::Token::Delimiter(']')) {
+                    return self.error_expression(String::from(
+                        "Missing closing bracket after items in vector",
+                    ));
+                }
+
+                Expression::Map(Map::Expressions(map))
+            }
+            (Some(token), _, _) => {
+                let message = format!(
+                    "Identifier expected after map literal initializer, received: {:?}",
+                    token
+                );
+
+                self.error_expression(message)
+            }
+            (None, _, _) => {
+                self.error_expression(String::from("Error parsing arguments when calling block"))
+            }
+        }
+    }
+
     fn parse_vector_expression(&mut self) -> Expression {
         let peek_token = self.tokens.peek();
         let mut items: Vec<Expression> = Vec::new();
@@ -487,6 +586,22 @@ impl<'a> Parser<'a> {
                     )),
                 }
             }
+            lexer::Token::MapInitializer('%') => {
+                let current_token = self.tokens.next();
+
+                match current_token {
+                    Some(lexer::Token::Delimiter('[')) => self.parse_map_expression(),
+                    Some(token) => {
+                        let message =
+                            format!("Unexpected token after map initializer: {:?}", token);
+
+                        self.error_expression(message)
+                    }
+                    None => {
+                        self.error_expression(String::from("Missing token after map initializer"))
+                    }
+                }
+            }
             lexer::Token::Delimiter('[') => self.parse_vector_expression(),
             lexer::Token::Identifier(identifier) => Expression::Identifier(Identifier {
                 name: identifier.clone(),
@@ -531,6 +646,8 @@ impl<'a> Parser<'a> {
             lexer::Token::Illegal => todo!(),
             lexer::Token::Operator(_) => todo!(),
             lexer::Token::Delimiter(_) => todo!(),
+            lexer::Token::MapInitializer(_) => todo!(),
+            lexer::Token::MapKeySuffix(_) => todo!(),
         }
     }
 
@@ -641,8 +758,10 @@ pub fn parse(tokens: lexer::Tokens) -> Program {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::{
-        parse, Arguments, Block, Condition, Function, Identifier, Program, Statement, Vector,
+        parse, Arguments, Block, Condition, Function, Identifier, Map, Program, Statement, Vector,
     };
     use crate::{
         lexer::tokenize,
@@ -909,6 +1028,19 @@ mod tests {
                     Box::new(Expression::Integer(String::from("1"))),
                 ),
             ]))),
+        )
+    }
+
+    #[test]
+    fn it_parses_map_of_strings() {
+        assert_statement_eq(
+            "%[foo: \"bar\"]",
+            Statement::Expression(Expression::Map(Map::Expressions(HashMap::from([(
+                Identifier {
+                    name: String::from("foo"),
+                },
+                Expression::String(String::from("bar")),
+            )])))),
         )
     }
 }
