@@ -257,6 +257,27 @@ fn eval_statement(statement: parser::Statement, environment: &mut Environment) -
             )))),
         },
         parser::Statement::Invalid(_) => todo!(),
+        parser::Statement::Loop(
+            parser::Condition::Expression(condition_expression),
+            consequence,
+        ) => {
+            loop {
+                match eval_expression(condition_expression.clone(), environment) {
+                    Object::Boolean(true) => {
+                        eval_block(consequence.clone(), environment);
+                    }
+                    Object::Boolean(false) => break,
+                    object => {
+                        return Result::Object(Object::Error(String::from(format!(
+                        "Loop condition expression must evalate to boolean, instead received {:?}",
+                        object
+                    ))))
+                    }
+                }
+            }
+
+            Result::Void
+        }
     }
 }
 
@@ -470,5 +491,19 @@ mod tests {
                 Box::new(Object::String(String::from("bar"))),
             )])),
         );
+    }
+
+    #[test]
+    fn it_evaluates_loop_statements() {
+        let code = "i = 0; while (i < 3) { i = i + 1 }";
+        let parsed = parse(tokenize(code));
+        let mut environment = Environment::new();
+        let actual = eval(parsed, &mut environment);
+        let mut expected_environment = Environment::new();
+
+        expected_environment.set(String::from("i"), Object::Integer(3));
+
+        assert_eq!(actual, Result::Void);
+        assert_eq!(environment, expected_environment);
     }
 }
