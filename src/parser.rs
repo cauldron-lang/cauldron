@@ -113,6 +113,7 @@ pub enum Statement {
     Assignment(String, Expression),
     Expression(Expression),
     Conditional(Condition, Block),
+    Loop(Condition, Block),
     Invalid(Error),
 }
 
@@ -172,6 +173,11 @@ impl<'a> Parser<'a> {
                 let next_token = self.tokens.next();
 
                 self.parse_if_statement(next_token)
+            }
+            (lexer::Token::Keyword(_while), _) if _while == "while" => {
+                let next_token = self.tokens.next();
+
+                self.parse_loop_statement(next_token)
             }
             _ => Statement::Expression(self.parse_expression(Some(current_token))),
         };
@@ -240,6 +246,44 @@ impl<'a> Parser<'a> {
                 let consequence = self.parse_block(next_token);
 
                 Statement::Conditional(condition, consequence)
+            }
+            Some(invalid_token) => self.error_statement(format!(
+                "Invalid token while parsing 'if' statement's condition: {:?}",
+                invalid_token
+            )),
+            None => self.error_statement(String::from(
+                "Missing condition and consequence of 'if' statement",
+            )),
+        }
+    }
+
+    fn parse_loop_statement(&mut self, current_token: Option<&lexer::Token>) -> Statement {
+        match current_token {
+            Some(lexer::Token::Delimiter('(')) => {
+                let next_token = self.tokens.next();
+                let condition = Condition::Expression(self.parse_expression(next_token));
+                let peek_token = self.tokens.peek();
+
+                if peek_token != Some(&&lexer::Token::Delimiter(')')) {
+                    return self.error_statement(String::from(
+                        "Missing close parenthesis for containing condition in while loop",
+                    ));
+                }
+
+                self.tokens.next();
+                let peek_token = self.tokens.peek();
+
+                if peek_token != Some(&&lexer::Token::Delimiter('{')) {
+                    return self.error_statement(String::from(
+                        "Missing open curly brace for containing consequence in while loop",
+                    ));
+                }
+
+                self.tokens.next();
+                let next_token = self.tokens.next();
+                let loop_body = self.parse_block(next_token);
+
+                Statement::Loop(condition, loop_body)
             }
             Some(invalid_token) => self.error_statement(format!(
                 "Invalid token while parsing 'if' statement's condition: {:?}",
@@ -1042,5 +1086,21 @@ mod tests {
                 Expression::String(String::from("bar")),
             )])))),
         )
+    }
+
+    #[test]
+    fn it_parses_call_in_loop() {
+        assert_statement_eq(
+            "while (true) { print(1) }",
+            Statement::Loop(
+                Condition::Expression(Expression::Boolean(true)),
+                Block::Statements(vec![Statement::Expression(Expression::Call(
+                    Box::new(Expression::Identifier(Identifier {
+                        name: String::from("print"),
+                    })),
+                    vec![Expression::Integer(String::from("1"))],
+                ))]),
+            ),
+        );
     }
 }
