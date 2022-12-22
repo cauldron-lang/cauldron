@@ -65,6 +65,13 @@ if(1 == 1) {
   print("Equality is broken :(");
 }
 ```
+- Looping construct
+```
+i = 0
+while (i < 2) {
+  i = i + 1
+}
+```
 
 ### Modules
 - The module system is simple and directory based. Example program structure
