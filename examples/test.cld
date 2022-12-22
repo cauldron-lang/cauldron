@@ -1,1 +1,3 @@
-print("test")
+io = export("bifs:io")
+
+io.print("test")

@@ -4,7 +4,8 @@ use std::io;
 use std::io::stdout;
 use std::io::Write;
 
-use crate::eval::Environment;
+use crate::eval::env::Environment;
+use crate::eval::object::{Object, Result};
 
 pub mod eval;
 pub mod lexer;
@@ -46,9 +47,9 @@ fn interpret(code: String) {
     let result = eval::eval(ast, &mut environment);
 
     match result {
-        eval::Result::Void => todo!(),
-        eval::Result::Object(eval::Object::Error(error_message)) => panic!("{:?}", error_message),
-        eval::Result::Object(_) => {}
+        Result::Void => todo!(),
+        Result::Object(Object::Error(error_message)) => panic!("{:?}", error_message),
+        Result::Object(_) => {}
     }
 }
 

@@ -1,51 +1,11 @@
+pub mod bifs;
+pub mod env;
+pub mod object;
+
+use crate::parser::{self, Arguments, Block, Function, InfixOperator, PrefixOperator};
+use env::Environment;
+use object::{MapKey, Object, Result};
 use std::collections::HashMap;
-
-use crate::parser::{self, Arguments, Block, Function, Identifier, InfixOperator, PrefixOperator};
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct MapKey {
-    name: String,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Object {
-    Void,
-    Integer(i32),
-    String(String),
-    Error(String),
-    Boolean(bool),
-    // FIXME: Arguments should be renamed to Parameters here
-    Function(Arguments, Block, Environment),
-    Vector(Vec<Object>),
-    Map(HashMap<MapKey, Box<Object>>),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Result {
-    Void,
-    Object(Object),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Environment {
-    variables: HashMap<String, Object>,
-}
-
-impl Environment {
-    pub fn new() -> Self {
-        Self {
-            variables: HashMap::new(),
-        }
-    }
-
-    fn get(&self, key: &Identifier) -> Option<&Object> {
-        self.variables.get(&key.name)
-    }
-
-    fn set(&mut self, key: String, object: Object) {
-        self.variables.insert(key, object);
-    }
-}
 
 fn eval_expression(expression: parser::Expression, environment: &mut Environment) -> Object {
     match expression {

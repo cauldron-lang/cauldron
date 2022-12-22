@@ -67,35 +67,36 @@ while (i < 2) {
 ```
 
 ### Modules
-- The module system is simple and directory based. Example program structure
+- The module system is namespace and directory based. Example program structure
 ```
 - bin
 -- main.cld
 - lib
 -- math.cld
 ```
-- Exporting is performed by passing exported variables to the builtin `export` function in a map. Calling `export` multiple times in a file is an error. Contents of `lib/math.cld`:
+- Exporting is performed by passing variables to the builtin `export` function. Calling `export` multiple times in a file will overwrite the exported value. Contents of `lib/math.cld`:
 ```
 add = fn(a, b) { a + b};
 subtract = fn(a, b) { a - b };
 
 export({ add: add, subtract: subtract });
 ```
-- The return value of the `import` function is always a map of the . Relative import of `lib/math.cld` from within `bin/main.cld`:
+- The return value of the `import` function is always the argument passed to the corresponding files `export`. Relative import of `lib/math.cld` from within `bin/main.cld`:
 ```
-math = import("../lib/math.cld");
+math = import("../lib/math");
 
 print(math.add(1, 1));
 ```
+- Modules can also be imported and exported prefixed by namespaces. As an example, Cauldron ships with many built-in functions that can be accessed at the "bifs" namespace, e.g. `io = import("bifs:io");`. Currently only the `"bifs"` namespace exists.
 
 ### BIFs: Built-in Functions
 Cauldron has several BIF modules at various levels of abstraction to provide utilities to the language. Modules imported from the BIF do not require a relative or absolute file path.
 
 #### io
-The `io` module provides a high level abstraction over program input and output. Some examples include:
-- Import the `io` module. 
+The `bifs:io` module provides a high level abstraction over program input and output. Some examples include:
+- Import the `bifs:io` module. 
 ```
-io = import("io");
+io = import("bifs:io");
 ```
 - Write to stdout
 ```
