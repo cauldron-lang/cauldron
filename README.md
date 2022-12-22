@@ -1,13 +1,6 @@
 ## Overview
 Cauldron is a programming language focusing on simplicity and consistency
 
-### Features
-- Minimal syntax
-- Tooling included (formatter, repl, etc)
-- No nulls!
-- Strong static typing with inference
-- Consistency
-
 ### Primitives
 These are the atomic building blocks of Cauldron programs.
 
