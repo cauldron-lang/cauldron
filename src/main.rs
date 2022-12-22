@@ -1,4 +1,5 @@
 use std::env;
+use std::fs;
 use std::io;
 use std::io::stdout;
 use std::io::Write;
@@ -17,13 +18,44 @@ enum SubCommand {
 
 fn main() {
     let mut args = env::args();
-    let subcommand = args.nth(1).expect("Missing subcommand!");
+
+    /*
+     * Move argument pointer off the first argument since it's the path of
+     * the Cauldron executable https://doc.rust-lang.org/std/env/fn.args.html
+     */
+    args.next();
+    let subcommand = args.next().expect("Missing subcommand!");
 
     match subcommand.as_str() {
         "rlpl" => print_loop(SubCommand::ReadLexPrintLoop),
         "rppl" => print_loop(SubCommand::ReadParsePrintLoop),
         "repl" => print_loop(SubCommand::ReadEvaluatePrintLoop),
-        _ => println!("Unknown subcommand provided {}", subcommand),
+        "run" => {
+            let filepath = args.next().expect("Missing path to file!");
+
+            interpret_file(String::from(filepath))
+        }
+        subcommand => panic!("Unknown subcommand: {:?}", subcommand),
+    }
+}
+
+fn interpret(code: String) {
+    let mut environment = Environment::new();
+    let tokens = lexer::tokenize(code.as_str().trim_end());
+    let ast = parser::parse(tokens);
+    let result = eval::eval(ast, &mut environment);
+
+    match result {
+        eval::Result::Void => todo!(),
+        eval::Result::Object(eval::Object::Error(error_message)) => panic!("{:?}", error_message),
+        eval::Result::Object(_) => {}
+    }
+}
+
+fn interpret_file(file_path: String) {
+    match fs::read_to_string(file_path) {
+        Ok(code) => interpret(code),
+        Err(error) => panic!("Unable to read file due to error: {:?}", error),
     }
 }
 

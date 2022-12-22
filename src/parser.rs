@@ -688,7 +688,6 @@ impl<'a> Parser<'a> {
             lexer::Token::Keyword(_) => todo!(),
             lexer::Token::Boolean(boolean) => Expression::Boolean(*boolean),
             lexer::Token::Illegal => todo!(),
-            lexer::Token::Operator(_) => todo!(),
             lexer::Token::Delimiter(_) => todo!(),
             lexer::Token::MapInitializer(_) => todo!(),
             lexer::Token::MapKeySuffix(_) => todo!(),
@@ -768,12 +767,6 @@ impl<'a> Parser<'a> {
         self.seek_delimiter();
 
         Statement::Invalid(Error { message })
-    }
-
-    fn error_block(&mut self, message: String) -> Block {
-        self.seek_delimiter();
-
-        Block::Invalid(Error { message })
     }
 
     fn error_expression(&mut self, message: String) -> Expression {

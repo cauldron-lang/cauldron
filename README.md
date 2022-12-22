@@ -1,13 +1,6 @@
 ## Overview
 Cauldron is a programming language focusing on simplicity and consistency
 
-### Features
-- Minimal syntax
-- Tooling included (formatter, repl, etc)
-- No nulls!
-- Strong static typing with inference
-- Consistency
-
 ### Primitives
 These are the atomic building blocks of Cauldron programs.
 
@@ -63,6 +56,13 @@ if(1 == 1) {
   print("Equality works!");
 } else {
   print("Equality is broken :(");
+}
+```
+- Looping construct
+```
+i = 0
+while (i < 2) {
+  i = i + 1
 }
 ```
 
