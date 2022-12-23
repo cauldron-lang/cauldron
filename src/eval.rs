@@ -7,6 +7,8 @@ use env::Environment;
 use object::{MapKey, Object, Result};
 use std::collections::HashMap;
 
+use self::bifs::print;
+
 fn eval_expression(expression: parser::Expression, environment: &mut Environment) -> Object {
     match expression {
         parser::Expression::String(string) => Object::String(string),
@@ -41,6 +43,22 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
                                 )),
                             }
                         }
+                        Object::BIF(name) if name.as_str() == "print" => {
+                            if arguments.len() != 1 {
+                                return Object::Error(format!("Can only call print(str) with one argument but was given: {:?}", arguments.len()));
+                            }
+
+                            let expression = arguments.first().unwrap();
+                            let printable = eval_expression(expression.clone(), environment);
+
+                            match printable {
+                                Object::String(str) => print(str),
+                                Object::Integer(int) => print(int.to_string()),
+                                Object::Boolean(bool) => print(bool.to_string()),
+                                object => print(format!("{:?}", object)),
+                            }
+                        }
+
                         other => Object::Error(format!("Object is not callable: {:?}", other)),
                     },
                     None => Object::Error(format!(
@@ -154,6 +172,16 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
                 Object::Map(new_map)
             }
             parser::Map::Invalid(_) => todo!(),
+        },
+        parser::Expression::Import(prefix, module) => match (prefix.as_str(), module.as_str()) {
+            ("bifs", "io") => {
+                let print_fn = Object::BIF(String::from("print"));
+
+                environment.set(String::from("print"), print_fn);
+
+                Object::Void
+            }
+            _ => Object::Error(format!("Invalid prefix in import statement: {:?}", prefix)),
         },
     }
 }

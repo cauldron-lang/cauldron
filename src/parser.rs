@@ -1,6 +1,6 @@
 use std::{collections::HashMap, iter::Peekable, slice::Iter};
 
-use crate::lexer;
+use crate::{eval::env::Environment, lexer};
 
 // LOWEST
 // EQUALS ==
@@ -77,6 +77,7 @@ pub enum Expression {
     Block(Block),
     Vector(Vector),
     Map(Map),
+    Import(String, String),
 }
 
 #[derive(Debug, PartialEq, Clone)]

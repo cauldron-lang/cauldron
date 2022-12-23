@@ -18,6 +18,7 @@ pub enum Object {
     Function(Arguments, Block, Environment),
     Vector(Vec<Object>),
     Map(HashMap<MapKey, Box<Object>>),
+    BIF(String),
 }
 
 #[derive(Debug, PartialEq, Clone)]
