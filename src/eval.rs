@@ -2,12 +2,19 @@ pub mod bifs;
 pub mod env;
 pub mod object;
 
-use crate::parser::{self, Arguments, Block, Function, InfixOperator, PrefixOperator};
+use crate::parser::{self, Arguments, Block, Function, Identifier, InfixOperator, PrefixOperator};
 use env::Environment;
 use object::{MapKey, Object, Result};
 use std::collections::HashMap;
 
 use self::bifs::print;
+
+fn is_collection(object: Object) -> bool {
+    match object {
+        Object::Vector(_) | Object::Map(_) | Object::String(_) => true,
+        _ => false,
+    }
+}
 
 fn eval_expression(expression: parser::Expression, environment: &mut Environment) -> Object {
     match expression {
@@ -182,6 +189,53 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
                 Object::Void
             }
             _ => Object::Error(format!("Invalid prefix in import statement: {:?}", prefix)),
+        },
+        parser::Expression::Access(identifier, key) => match *identifier {
+            parser::Expression::Identifier(identifier) => {
+                let new_env = environment.clone();
+                let collection = new_env.get(&identifier);
+
+                match collection {
+                    Some(collection) => {
+                        let key = eval_expression(*key, environment);
+
+                        match collection {
+                            Object::String(str) => match key {
+                                Object::Integer(int) => match usize::try_from(int) {
+                                    Ok(int) => {
+                                        let char = str.chars().nth(int);
+
+                                        match char {
+                                            Some(char) => Object::String(char.to_string()),
+                                            None => Object::Error(format!(
+                                                "Index {:?} out of bounds for identifier {:?} in access expression",
+                                                int, str
+                                            )),
+                                        }
+                                    }
+                                    Err(error) => Object::Error(format!(
+                                        "Integer conversion error in access expression: {:?}",
+                                        error.to_string()
+                                    )),
+                                },
+                                object => Object::Error(format!("Object {:?} cannot be used as key in access expression on identifier {:?}", object, identifier))
+                            },
+                            object => Object::Error(format!(
+                                "Unable to use access expression on non-collection: {:?}",
+                                object
+                            )),
+                        }
+                    }
+                    None => Object::Error(format!(
+                        "Unable to resolve identifier in access expression: {:?}",
+                        identifier
+                    )),
+                }
+            }
+            token => Object::Error(format!(
+                "Unexpected access on non-identifier token: {:?}",
+                token
+            )),
         },
     }
 }
@@ -493,5 +547,12 @@ mod tests {
 
         assert_eq!(actual, Result::Void);
         assert_eq!(environment, expected_environment);
+    }
+
+    #[test]
+    fn it_evaluates_access_for_strings() {
+        let code = "f = \"foo\"; f[1]";
+
+        assert_evaluated_object(code, Object::String(String::from("o")));
     }
 }

@@ -66,6 +66,7 @@ pub enum Callable {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Call(Box<Expression>, Vec<Expression>),
+    Access(Box<Expression>, Box<Expression>),
     Integer(String),
     Identifier(Identifier),
     String(String),
@@ -555,6 +556,21 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_access_expression(&mut self, block_identifier: Expression) -> Expression {
+        let current_token = self.tokens.next();
+
+        match current_token {
+            Some(current_token) => {
+                let key = self.parse_expression_with_precedence(current_token, PRECEDENCE_LOWEST);
+
+                Expression::Access(Box::new(block_identifier), Box::new(key))
+            }
+            None => Expression::Invalid(Error {
+                message: String::from("Unexpected EOF while parsing access expression"),
+            }),
+        }
+    }
+
     fn is_peek_not_semicolon(&mut self) -> bool {
         self.tokens.peek() != Some(&&lexer::Token::Delimiter(';'))
     }
@@ -648,9 +664,49 @@ impl<'a> Parser<'a> {
                 }
             }
             lexer::Token::Delimiter('[') => self.parse_vector_expression(),
-            lexer::Token::Identifier(identifier) => Expression::Identifier(Identifier {
-                name: identifier.clone(),
-            }),
+            lexer::Token::Identifier(identifier) => {
+                let peek_token = self.tokens.peek();
+
+                match peek_token {
+                    Some(&&lexer::Token::Delimiter('[')) => {
+                        self.tokens.next();
+
+                        let current_token = self.tokens.next();
+
+                        match current_token {
+                            Some(current_token) => {
+                                let delimited_expression = self.parse_expression_with_precedence(
+                                    current_token,
+                                    PRECEDENCE_LOWEST,
+                                );
+                                let peek_token = self.tokens.peek();
+
+                                match peek_token {
+                                    Some(&&lexer::Token::Delimiter(']')) => {
+                                        self.tokens.next();
+
+                                        Expression::Access(
+                                            Box::new(Expression::Identifier(Identifier {
+                                                name: identifier.clone(),
+                                            })),
+                                            Box::new(delimited_expression),
+                                        )
+                                    }
+                                    _ => self.error_expression(String::from(
+                                        "Unexpected token after group expression",
+                                    )),
+                                }
+                            }
+                            None => self.error_expression(String::from(
+                                "Missing token after open bracket during collection access",
+                            )),
+                        }
+                    }
+                    _ => Expression::Identifier(Identifier {
+                        name: identifier.clone(),
+                    }),
+                }
+            }
             lexer::Token::Keyword(_fn) if _fn == "fn" => {
                 let peek_token = self.tokens.peek();
 
@@ -749,6 +805,10 @@ impl<'a> Parser<'a> {
                 Some(&&lexer::Token::Delimiter('(')) => {
                     self.tokens.next();
                     left_expression = self.parse_call_expression(left_expression);
+                }
+                Some(&&lexer::Token::Delimiter('[')) => {
+                    self.tokens.next();
+                    left_expression = self.parse_access_expression(left_expression);
                 }
                 _ => break,
             };
@@ -1096,5 +1156,18 @@ mod tests {
                 ))]),
             ),
         );
+    }
+
+    #[test]
+    fn it_parses_access_with_integer() {
+        assert_statement_eq(
+            "f[0]",
+            Statement::Expression(Expression::Access(
+                Box::new(Expression::Identifier(Identifier {
+                    name: String::from("f"),
+                })),
+                Box::new(Expression::Integer(String::from("0"))),
+            )),
+        )
     }
 }
