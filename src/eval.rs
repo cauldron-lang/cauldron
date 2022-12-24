@@ -2,19 +2,12 @@ pub mod bifs;
 pub mod env;
 pub mod object;
 
-use crate::parser::{self, Arguments, Block, Function, Identifier, InfixOperator, PrefixOperator};
+use crate::parser::{self, Arguments, Block, Function, InfixOperator, PrefixOperator};
 use env::Environment;
 use object::{MapKey, Object, Result};
 use std::collections::HashMap;
 
 use self::bifs::print;
-
-fn is_collection(object: Object) -> bool {
-    match object {
-        Object::Vector(_) | Object::Map(_) | Object::String(_) => true,
-        _ => false,
-    }
-}
 
 fn eval_expression(expression: parser::Expression, environment: &mut Environment) -> Object {
     match expression {
@@ -182,11 +175,17 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
         },
         parser::Expression::Import(prefix, module) => match (prefix.as_str(), module.as_str()) {
             ("bifs", "io") => {
+                let mut io = HashMap::new();
                 let print_fn = Object::BIF(String::from("print"));
 
-                environment.set(String::from("print"), print_fn);
+                io.insert(
+                    MapKey {
+                        name: String::from("print"),
+                    },
+                    Box::new(print_fn),
+                );
 
-                Object::Void
+                Object::Map(io)
             }
             _ => Object::Error(format!("Invalid prefix in import statement: {:?}", prefix)),
         },

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, iter::Peekable, slice::Iter};
 
-use crate::{eval::env::Environment, lexer};
+use crate::lexer;
 
 // LOWEST
 // EQUALS ==
@@ -512,7 +512,14 @@ impl<'a> Parser<'a> {
 
         if peek_token == Some(&&lexer::Token::Delimiter(')')) {
             self.tokens.next();
-            return Expression::Call(Box::new(block_identifier), arguments);
+
+            return match block_identifier {
+                Expression::Identifier(Identifier { name }) if name.as_str() == "import" => self
+                    .error_expression(String::from(
+                        "Import expressions must include argument containing name of module",
+                    )),
+                _ => Expression::Call(Box::new(block_identifier), arguments),
+            };
         }
 
         let current_token = self.tokens.next();
@@ -548,7 +555,32 @@ impl<'a> Parser<'a> {
                     ));
                 }
 
-                Expression::Call(Box::new(block_identifier), arguments)
+                match block_identifier {
+                    Expression::Identifier(Identifier { name }) if name.as_str() == "import" => {
+                        // unwrapping the first argument because handling the zero arguments case above
+                        let import_argument = arguments.first().unwrap();
+
+                        match import_argument {
+                            Expression::String(import_argument) => {
+                                let module_path = import_argument.split(':').collect::<Vec<&str>>();
+
+                                match module_path.len() {
+                                    1 => Expression::Import(
+                                        String::from(""),
+                                        String::from(*module_path.first().unwrap()),
+                                    ),
+                                    2 => Expression::Import(
+                                        String::from(*module_path.first().unwrap()),
+                                        String::from(*module_path.get(1).unwrap()),
+                                    ),
+                                    _ => self.error_expression(String::from(format!("Expected module path to follow the template <prefix:path> and received {:?}", module_path)))
+                                }
+                            }
+                            other => self.error_expression(String::from(format!("Only string literals can be passed to import statements, instead received: {:?}", other))),
+                        }
+                    }
+                    _ => Expression::Call(Box::new(block_identifier), arguments),
+                }
             }
             None => {
                 self.error_expression(String::from("Error parsing arguments when calling block"))

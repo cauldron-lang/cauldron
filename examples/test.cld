@@ -1,3 +1,7 @@
-io = import("bifs:io")
+io = import("bifs:io") 
+print = io["print"]
+new_print = fn(printable) {
+    print("PRINTING: " + printable)
+}
 
-io.print("test")
+new_print("TEST")

@@ -47,10 +47,10 @@ fn interpret(code: String) {
     let result = eval::eval(ast, &mut environment);
 
     match result {
-        Result::Void => todo!(),
+        Result::Void => {}
         Result::Object(Object::Error(error_message)) => panic!("{:?}", error_message),
         Result::Object(_) => {}
-    }
+    };
 }
 
 fn interpret_file(file_path: String) {
