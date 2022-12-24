@@ -220,6 +220,22 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
                                 },
                                 object => Object::Error(format!("Object {:?} cannot be used as key in access expression on identifier {:?}", object, identifier))
                             },
+                            Object::Map(map) => {
+                                match key {
+                                    Object::String(str) => {
+                                        let value = map.get(&MapKey { name: str.clone() });
+
+                                        match value {
+                                            Some(value) => *value.clone(),
+                                            None => Object::Error(format!(
+                                                "Value not found for key {:?} in map {:?}",
+                                                str, identifier
+                                            ))
+                                        }
+                                    },
+                                    object => Object::Error(format!("Object {:?} cannot be used as key in access expression on identifier {:?}", object, identifier))
+                                }
+                            }
                             object => Object::Error(format!(
                                 "Unable to use access expression on non-collection: {:?}",
                                 object
@@ -554,5 +570,12 @@ mod tests {
         let code = "f = \"foo\"; f[1]";
 
         assert_evaluated_object(code, Object::String(String::from("o")));
+    }
+
+    #[test]
+    fn it_evaluates_access_for_maps() {
+        let code = "f = %[foo: \"bar\"]; f[\"foo\"]";
+
+        assert_evaluated_object(code, Object::String(String::from("bar")));
     }
 }
