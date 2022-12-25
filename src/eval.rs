@@ -2,10 +2,13 @@ pub mod bifs;
 pub mod env;
 pub mod object;
 
-use crate::parser::{self, Arguments, Block, Function, InfixOperator, PrefixOperator};
+use crate::{
+    lexer::{self, tokenize},
+    parser::{self, Arguments, Block, Function, InfixOperator, PrefixOperator},
+};
 use env::Environment;
 use object::{MapKey, Object, Result};
-use std::collections::HashMap;
+use std::{collections::HashMap, fs};
 
 use self::bifs::print;
 
@@ -187,6 +190,23 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
 
                 Object::Map(io)
             }
+            ("", filepath) => match fs::read_to_string(filepath) {
+                Ok(code) => {
+                    let mut environment = Environment::new();
+                    let tokens = lexer::tokenize(code.as_str().trim_end());
+                    let ast = parser::parse(tokens);
+                    let result = eval(ast, &mut environment);
+
+                    match result {
+                        Result::Void => Object::Void,
+                        Result::Object(Object::Error(error_message)) => {
+                            panic!("{:?}", error_message)
+                        }
+                        Result::Object(object) => object,
+                    }
+                }
+                Err(error) => panic!("Unable to read file due to error: {:?}", error),
+            },
             _ => Object::Error(format!("Invalid prefix in import statement: {:?}", prefix)),
         },
         parser::Expression::Access(identifier, key) => match *identifier {
@@ -576,5 +596,20 @@ mod tests {
         let code = "f = %[foo: \"bar\"]; f[\"foo\"]";
 
         assert_evaluated_object(code, Object::String(String::from("bar")));
+    }
+
+    #[test]
+    fn it_evaluates_importing_bifs() {
+        let code = "import(\"bifs:io\")";
+        let mut map = HashMap::new();
+
+        map.insert(
+            MapKey {
+                name: String::from("print"),
+            },
+            Box::new(Object::BIF(String::from("print"))),
+        );
+
+        assert_evaluated_object(code, Object::Map(map));
     }
 }
