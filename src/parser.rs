@@ -79,6 +79,7 @@ pub enum Expression {
     Vector(Vector),
     Map(Map),
     Import(String, String),
+    Export(Box<Expression>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -518,6 +519,10 @@ impl<'a> Parser<'a> {
                     .error_expression(String::from(
                         "Import expressions must include argument containing name of module",
                     )),
+                Expression::Identifier(Identifier { name }) if name.as_str() == "export" => self
+                    .error_expression(String::from(
+                        "Export expressions must include argument containing name of module",
+                    )),
                 _ => Expression::Call(Box::new(block_identifier), arguments),
             };
         }
@@ -557,7 +562,7 @@ impl<'a> Parser<'a> {
 
                 match block_identifier {
                     Expression::Identifier(Identifier { name }) if name.as_str() == "import" => {
-                        // unwrapping the first argument because handling the zero arguments case above
+                        // unwrapping the first argument because the zero arguments case is being handled above
                         let import_argument = arguments.first().unwrap();
 
                         match import_argument {
@@ -577,6 +582,18 @@ impl<'a> Parser<'a> {
                                 }
                             }
                             other => self.error_expression(String::from(format!("Only string literals can be passed to import statements, instead received: {:?}", other))),
+                        }
+                    }
+                    Expression::Identifier(Identifier { name }) if name.as_str() == "export" => {
+                        // unwrapping the first argument because the zero arguments case is being handled above
+                        let export_argument = arguments.first().unwrap();
+
+                        match arguments.len() {
+                            1 => Expression::Export(Box::new(export_argument.clone())),
+                            num_args => self.error_expression(String::from(format!(
+                                "Expected only one argument to export function. Received {:?}",
+                                num_args
+                            ))),
                         }
                     }
                     _ => Expression::Call(Box::new(block_identifier), arguments),
@@ -1200,6 +1217,24 @@ mod tests {
                 })),
                 Box::new(Expression::Integer(String::from("0"))),
             )),
+        )
+    }
+
+    #[test]
+    fn it_parses_exports() {
+        assert_statement_eq(
+            "export(1)",
+            Statement::Expression(Expression::Export(Box::new(Expression::Integer(
+                String::from("1"),
+            )))),
+        )
+    }
+
+    #[test]
+    fn it_parses_imports() {
+        assert_statement_eq(
+            "import(\"bifs:io\")",
+            Statement::Expression(Expression::Import(String::from("bifs"), String::from("io"))),
         )
     }
 }

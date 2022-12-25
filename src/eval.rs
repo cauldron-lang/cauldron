@@ -3,12 +3,16 @@ pub mod env;
 pub mod object;
 
 use crate::{
-    lexer::{self, tokenize},
+    lexer,
     parser::{self, Arguments, Block, Function, InfixOperator, PrefixOperator},
 };
 use env::Environment;
 use object::{MapKey, Object, Result};
-use std::{collections::HashMap, fs};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use self::bifs::print;
 
@@ -190,24 +194,50 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
 
                 Object::Map(io)
             }
-            ("", filepath) => match fs::read_to_string(filepath) {
-                Ok(code) => {
-                    let mut environment = Environment::new();
-                    let tokens = lexer::tokenize(code.as_str().trim_end());
-                    let ast = parser::parse(tokens);
-                    let result = eval(ast, &mut environment);
+            ("", filepath) => {
+                let mut path = PathBuf::new();
 
-                    match result {
-                        Result::Void => Object::Void,
-                        Result::Object(Object::Error(error_message)) => {
-                            panic!("{:?}", error_message)
+                path.push(environment.source_context.clone());
+                path.push(filepath);
+
+                match fs::read_to_string(path.to_str().unwrap()) {
+                    Ok(code) => {
+                        let mut source_context = PathBuf::new();
+
+                        source_context.push(environment.source_context.clone());
+                        source_context.push(filepath);
+
+                        match source_context.parent() {
+                            Some(source_context) => {
+                                let mut environment =
+                                    Environment::new(source_context.to_path_buf());
+                                let tokens = lexer::tokenize(code.as_str().trim_end());
+                                let ast = parser::parse(tokens);
+
+                                eval(ast, &mut environment);
+
+                                match environment.export {
+                                    Some(exportable) => *exportable,
+                                    None => Object::Void,
+                                }
+                            }
+                            None => Object::Error(format!(
+                                "Failed to get parent directoy of {:?}",
+                                source_context
+                            )),
                         }
-                        Result::Object(object) => object,
                     }
+                    Err(error) => panic!(
+                        "Unable to read file {:?} due to error: {:?}",
+                        path.to_str().clone(),
+                        error
+                    ),
                 }
-                Err(error) => panic!("Unable to read file due to error: {:?}", error),
-            },
-            _ => Object::Error(format!("Invalid prefix in import statement: {:?}", prefix)),
+            }
+            _ => Object::Error(format!(
+                "Unable to import module {:?} with prefix {:?}",
+                prefix, module
+            )),
         },
         parser::Expression::Access(identifier, key) => match *identifier {
             parser::Expression::Identifier(identifier) => {
@@ -272,6 +302,21 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
                 token
             )),
         },
+        parser::Expression::Export(expression) => {
+            let exportable = eval_expression(*expression, environment);
+
+            match exportable {
+                Object::Boolean(_)
+                | Object::Function(_, _, _)
+                | Object::Integer(_)
+                | Object::Map(_)
+                | Object::String(_)
+                | Object::Vector(_) => environment.set_export(Some(Box::new(exportable))),
+                _ => return Object::Error(format!("Cannot export {:?}", exportable)),
+            };
+
+            Object::Void
+        }
     }
 }
 
@@ -316,9 +361,11 @@ fn eval_statement(statement: parser::Statement, environment: &mut Environment) -
             environment.set(identifier, object);
             Result::Void
         }
-        parser::Statement::Expression(expression) => {
-            Result::Object(eval_expression(expression, environment))
-        }
+        parser::Statement::Expression(expression) => match eval_expression(expression, environment)
+        {
+            Object::Void => Result::Void,
+            object => Result::Object(object),
+        },
         parser::Statement::Conditional(
             parser::Condition::Expression(condition_expression),
             consequence,
@@ -374,14 +421,18 @@ pub fn eval(program: parser::Program, environment: &mut Environment) -> Result {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, env::temp_dir, fs::File, io::Write, path::PathBuf};
 
     use super::{eval, Environment, MapKey, Object, Result};
     use crate::{lexer::tokenize, parser::parse};
 
+    fn stub_env() -> Environment {
+        Environment::new(PathBuf::new())
+    }
+
     fn assert_evaluated_object(code: &str, object: Object) {
         let parsed = parse(tokenize(code));
-        let mut environment = Environment::new();
+        let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
 
         assert_eq!(actual, Result::Object(object));
@@ -481,9 +532,9 @@ mod tests {
     fn it_evaluates_conditional_statements_truthy() {
         let code = "if (true) { a = 1; b = 2 }";
         let parsed = parse(tokenize(code));
-        let mut environment = Environment::new();
+        let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
-        let mut expected_environment = Environment::new();
+        let mut expected_environment = stub_env();
 
         expected_environment.set(String::from("a"), Object::Integer(1));
         expected_environment.set(String::from("b"), Object::Integer(2));
@@ -496,9 +547,9 @@ mod tests {
     fn it_evaluates_conditional_statements_falsey() {
         let code = "if (false) { a = 1; b = 2 }";
         let parsed = parse(tokenize(code));
-        let mut environment = Environment::new();
+        let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
-        let expected_environment = Environment::new();
+        let expected_environment = stub_env();
 
         assert_eq!(actual, Result::Void);
         assert_eq!(environment, expected_environment);
@@ -574,9 +625,9 @@ mod tests {
     fn it_evaluates_loop_statements() {
         let code = "i = 0; while (i < 3) { i = i + 1 }";
         let parsed = parse(tokenize(code));
-        let mut environment = Environment::new();
+        let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
-        let mut expected_environment = Environment::new();
+        let mut expected_environment = stub_env();
 
         expected_environment.set(String::from("i"), Object::Integer(3));
 
@@ -611,5 +662,34 @@ mod tests {
         );
 
         assert_evaluated_object(code, Object::Map(map));
+    }
+
+    #[test]
+    fn it_evaluates_exports() {
+        let code = "export(1)";
+        let parsed = parse(tokenize(code));
+        let mut environment = stub_env();
+        let actual = eval(parsed, &mut environment);
+        let mut expected_environment = stub_env();
+
+        expected_environment.set_export(Some(Box::new(Object::Integer(1))));
+
+        assert_eq!(actual, Result::Void);
+        assert_eq!(environment, expected_environment);
+    }
+
+    #[test]
+    fn it_evaluates_importing_an_exported_integer() {
+        let mut dir = temp_dir();
+        let filename = "it_evaluates_importing_an_exported_integer.cld";
+
+        dir.push(filename);
+
+        let code = format!("import({:?})", dir);
+        let mut file = File::create(dir).unwrap();
+
+        file.write("export(1)".as_bytes()).unwrap();
+
+        assert_evaluated_object(code.as_str(), Object::Integer(1));
     }
 }
