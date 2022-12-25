@@ -1,51 +1,20 @@
-use std::collections::HashMap;
+pub mod bifs;
+pub mod env;
+pub mod object;
 
-use crate::parser::{self, Arguments, Block, Function, Identifier, InfixOperator, PrefixOperator};
+use crate::{
+    lexer,
+    parser::{self, Arguments, Block, Function, InfixOperator, PrefixOperator},
+};
+use env::Environment;
+use object::{MapKey, Object, Result};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+};
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct MapKey {
-    name: String,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Object {
-    Void,
-    Integer(i32),
-    String(String),
-    Error(String),
-    Boolean(bool),
-    // FIXME: Arguments should be renamed to Parameters here
-    Function(Arguments, Block, Environment),
-    Vector(Vec<Object>),
-    Map(HashMap<MapKey, Box<Object>>),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Result {
-    Void,
-    Object(Object),
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Environment {
-    variables: HashMap<String, Object>,
-}
-
-impl Environment {
-    pub fn new() -> Self {
-        Self {
-            variables: HashMap::new(),
-        }
-    }
-
-    fn get(&self, key: &Identifier) -> Option<&Object> {
-        self.variables.get(&key.name)
-    }
-
-    fn set(&mut self, key: String, object: Object) {
-        self.variables.insert(key, object);
-    }
-}
+use self::bifs::print;
 
 fn eval_expression(expression: parser::Expression, environment: &mut Environment) -> Object {
     match expression {
@@ -81,6 +50,22 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
                                 )),
                             }
                         }
+                        Object::BIF(name) if name.as_str() == "print" => {
+                            if arguments.len() != 1 {
+                                return Object::Error(format!("Can only call print(str) with one argument but was given: {:?}", arguments.len()));
+                            }
+
+                            let expression = arguments.first().unwrap();
+                            let printable = eval_expression(expression.clone(), environment);
+
+                            match printable {
+                                Object::String(str) => print(str),
+                                Object::Integer(int) => print(int.to_string()),
+                                Object::Boolean(bool) => print(bool.to_string()),
+                                object => print(format!("{:?}", object)),
+                            }
+                        }
+
                         other => Object::Error(format!("Object is not callable: {:?}", other)),
                     },
                     None => Object::Error(format!(
@@ -195,6 +180,143 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
             }
             parser::Map::Invalid(_) => todo!(),
         },
+        parser::Expression::Import(prefix, module) => match (prefix.as_str(), module.as_str()) {
+            ("bifs", "io") => {
+                let mut io = HashMap::new();
+                let print_fn = Object::BIF(String::from("print"));
+
+                io.insert(
+                    MapKey {
+                        name: String::from("print"),
+                    },
+                    Box::new(print_fn),
+                );
+
+                Object::Map(io)
+            }
+            ("", filepath) => {
+                let mut path = PathBuf::new();
+
+                path.push(environment.source_context.clone());
+                path.push(filepath);
+
+                match fs::read_to_string(path.to_str().unwrap()) {
+                    Ok(code) => {
+                        let mut source_context = PathBuf::new();
+
+                        source_context.push(environment.source_context.clone());
+                        source_context.push(filepath);
+
+                        match source_context.parent() {
+                            Some(source_context) => {
+                                let mut environment =
+                                    Environment::new(source_context.to_path_buf());
+                                let tokens = lexer::tokenize(code.as_str().trim_end());
+                                let ast = parser::parse(tokens);
+
+                                eval(ast, &mut environment);
+
+                                match environment.export {
+                                    Some(exportable) => *exportable,
+                                    None => Object::Void,
+                                }
+                            }
+                            None => Object::Error(format!(
+                                "Failed to get parent directoy of {:?}",
+                                source_context
+                            )),
+                        }
+                    }
+                    Err(error) => panic!(
+                        "Unable to read file {:?} due to error: {:?}",
+                        path.to_str().clone(),
+                        error
+                    ),
+                }
+            }
+            _ => Object::Error(format!(
+                "Unable to import module {:?} with prefix {:?}",
+                prefix, module
+            )),
+        },
+        parser::Expression::Access(identifier, key) => match *identifier {
+            parser::Expression::Identifier(identifier) => {
+                let new_env = environment.clone();
+                let collection = new_env.get(&identifier);
+
+                match collection {
+                    Some(collection) => {
+                        let key = eval_expression(*key, environment);
+
+                        match collection {
+                            Object::String(str) => match key {
+                                Object::Integer(int) => match usize::try_from(int) {
+                                    Ok(int) => {
+                                        let char = str.chars().nth(int);
+
+                                        match char {
+                                            Some(char) => Object::String(char.to_string()),
+                                            None => Object::Error(format!(
+                                                "Index {:?} out of bounds for identifier {:?} in access expression",
+                                                int, str
+                                            )),
+                                        }
+                                    }
+                                    Err(error) => Object::Error(format!(
+                                        "Integer conversion error in access expression: {:?}",
+                                        error.to_string()
+                                    )),
+                                },
+                                object => Object::Error(format!("Object {:?} cannot be used as key in access expression on identifier {:?}", object, identifier))
+                            },
+                            Object::Map(map) => {
+                                match key {
+                                    Object::String(str) => {
+                                        let value = map.get(&MapKey { name: str.clone() });
+
+                                        match value {
+                                            Some(value) => *value.clone(),
+                                            None => Object::Error(format!(
+                                                "Value not found for key {:?} in map {:?}",
+                                                str, identifier
+                                            ))
+                                        }
+                                    },
+                                    object => Object::Error(format!("Object {:?} cannot be used as key in access expression on identifier {:?}", object, identifier))
+                                }
+                            }
+                            object => Object::Error(format!(
+                                "Unable to use access expression on non-collection: {:?}",
+                                object
+                            )),
+                        }
+                    }
+                    None => Object::Error(format!(
+                        "Unable to resolve identifier in access expression: {:?}",
+                        identifier
+                    )),
+                }
+            }
+            token => Object::Error(format!(
+                "Unexpected access on non-identifier token: {:?}",
+                token
+            )),
+        },
+        parser::Expression::Export(expression) => {
+            let exportable = eval_expression(*expression, environment);
+
+            match exportable {
+                Object::Boolean(_)
+                | Object::Function(_, _, _)
+                | Object::Integer(_)
+                | Object::Map(_)
+                | Object::String(_)
+                | Object::Vector(_) => environment.set_export(Some(Box::new(exportable))),
+                _ => return Object::Error(format!("Cannot export {:?}", exportable)),
+            };
+
+            Object::Void
+        }
     }
 }
 
@@ -239,9 +361,11 @@ fn eval_statement(statement: parser::Statement, environment: &mut Environment) -
             environment.set(identifier, object);
             Result::Void
         }
-        parser::Statement::Expression(expression) => {
-            Result::Object(eval_expression(expression, environment))
-        }
+        parser::Statement::Expression(expression) => match eval_expression(expression, environment)
+        {
+            Object::Void => Result::Void,
+            object => Result::Object(object),
+        },
         parser::Statement::Conditional(
             parser::Condition::Expression(condition_expression),
             consequence,
@@ -297,14 +421,18 @@ pub fn eval(program: parser::Program, environment: &mut Environment) -> Result {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, env::temp_dir, fs::File, io::Write, path::PathBuf};
 
     use super::{eval, Environment, MapKey, Object, Result};
     use crate::{lexer::tokenize, parser::parse};
 
+    fn stub_env() -> Environment {
+        Environment::new(PathBuf::new())
+    }
+
     fn assert_evaluated_object(code: &str, object: Object) {
         let parsed = parse(tokenize(code));
-        let mut environment = Environment::new();
+        let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
 
         assert_eq!(actual, Result::Object(object));
@@ -404,9 +532,9 @@ mod tests {
     fn it_evaluates_conditional_statements_truthy() {
         let code = "if (true) { a = 1; b = 2 }";
         let parsed = parse(tokenize(code));
-        let mut environment = Environment::new();
+        let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
-        let mut expected_environment = Environment::new();
+        let mut expected_environment = stub_env();
 
         expected_environment.set(String::from("a"), Object::Integer(1));
         expected_environment.set(String::from("b"), Object::Integer(2));
@@ -419,9 +547,9 @@ mod tests {
     fn it_evaluates_conditional_statements_falsey() {
         let code = "if (false) { a = 1; b = 2 }";
         let parsed = parse(tokenize(code));
-        let mut environment = Environment::new();
+        let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
-        let expected_environment = Environment::new();
+        let expected_environment = stub_env();
 
         assert_eq!(actual, Result::Void);
         assert_eq!(environment, expected_environment);
@@ -497,13 +625,71 @@ mod tests {
     fn it_evaluates_loop_statements() {
         let code = "i = 0; while (i < 3) { i = i + 1 }";
         let parsed = parse(tokenize(code));
-        let mut environment = Environment::new();
+        let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
-        let mut expected_environment = Environment::new();
+        let mut expected_environment = stub_env();
 
         expected_environment.set(String::from("i"), Object::Integer(3));
 
         assert_eq!(actual, Result::Void);
         assert_eq!(environment, expected_environment);
+    }
+
+    #[test]
+    fn it_evaluates_access_for_strings() {
+        let code = "f = \"foo\"; f[1]";
+
+        assert_evaluated_object(code, Object::String(String::from("o")));
+    }
+
+    #[test]
+    fn it_evaluates_access_for_maps() {
+        let code = "f = %[foo: \"bar\"]; f[\"foo\"]";
+
+        assert_evaluated_object(code, Object::String(String::from("bar")));
+    }
+
+    #[test]
+    fn it_evaluates_importing_bifs() {
+        let code = "import(\"bifs:io\")";
+        let mut map = HashMap::new();
+
+        map.insert(
+            MapKey {
+                name: String::from("print"),
+            },
+            Box::new(Object::BIF(String::from("print"))),
+        );
+
+        assert_evaluated_object(code, Object::Map(map));
+    }
+
+    #[test]
+    fn it_evaluates_exports() {
+        let code = "export(1)";
+        let parsed = parse(tokenize(code));
+        let mut environment = stub_env();
+        let actual = eval(parsed, &mut environment);
+        let mut expected_environment = stub_env();
+
+        expected_environment.set_export(Some(Box::new(Object::Integer(1))));
+
+        assert_eq!(actual, Result::Void);
+        assert_eq!(environment, expected_environment);
+    }
+
+    #[test]
+    fn it_evaluates_importing_an_exported_integer() {
+        let mut dir = temp_dir();
+        let filename = "it_evaluates_importing_an_exported_integer.cld";
+
+        dir.push(filename);
+
+        let code = format!("import({:?})", dir);
+        let mut file = File::create(dir).unwrap();
+
+        file.write("export(1)".as_bytes()).unwrap();
+
+        assert_evaluated_object(code.as_str(), Object::Integer(1));
     }
 }

@@ -64,7 +64,7 @@ pub fn tokenize(str: &str) -> Tokens {
                     }
                 }
             }
-            Some(' ') => continue,
+            Some(' ') | Some('\n') => continue,
             Some('=') => {
                 if peek == Some(&'=') {
                     tokens.push(Token::Operator(Operator::Equals));
@@ -200,6 +200,22 @@ mod tests {
     #[test]
     fn it_lexes_assignment() {
         let actual = tokenize("a = 123");
+        let expected = Tokens::from(vec![
+            Token::Identifier(String::from("a")),
+            Token::Operator(Operator::Assignment),
+            Token::Integer(String::from("123")),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn it_lexes_assignment_with_newlines() {
+        let actual = tokenize(
+            "a 
+        = 
+        123",
+        );
         let expected = Tokens::from(vec![
             Token::Identifier(String::from("a")),
             Token::Operator(Operator::Assignment),

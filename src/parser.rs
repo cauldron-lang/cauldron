@@ -66,6 +66,7 @@ pub enum Callable {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Call(Box<Expression>, Vec<Expression>),
+    Access(Box<Expression>, Box<Expression>),
     Integer(String),
     Identifier(Identifier),
     String(String),
@@ -77,6 +78,8 @@ pub enum Expression {
     Block(Block),
     Vector(Vector),
     Map(Map),
+    Import(String, String),
+    Export(Box<Expression>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -510,7 +513,18 @@ impl<'a> Parser<'a> {
 
         if peek_token == Some(&&lexer::Token::Delimiter(')')) {
             self.tokens.next();
-            return Expression::Call(Box::new(block_identifier), arguments);
+
+            return match block_identifier {
+                Expression::Identifier(Identifier { name }) if name.as_str() == "import" => self
+                    .error_expression(String::from(
+                        "Import expressions must include argument containing name of module",
+                    )),
+                Expression::Identifier(Identifier { name }) if name.as_str() == "export" => self
+                    .error_expression(String::from(
+                        "Export expressions must include argument containing name of module",
+                    )),
+                _ => Expression::Call(Box::new(block_identifier), arguments),
+            };
         }
 
         let current_token = self.tokens.next();
@@ -546,11 +560,63 @@ impl<'a> Parser<'a> {
                     ));
                 }
 
-                Expression::Call(Box::new(block_identifier), arguments)
+                match block_identifier {
+                    Expression::Identifier(Identifier { name }) if name.as_str() == "import" => {
+                        // unwrapping the first argument because the zero arguments case is being handled above
+                        let import_argument = arguments.first().unwrap();
+
+                        match import_argument {
+                            Expression::String(import_argument) => {
+                                let module_path = import_argument.split(':').collect::<Vec<&str>>();
+
+                                match module_path.len() {
+                                    1 => Expression::Import(
+                                        String::from(""),
+                                        String::from(*module_path.first().unwrap()),
+                                    ),
+                                    2 => Expression::Import(
+                                        String::from(*module_path.first().unwrap()),
+                                        String::from(*module_path.get(1).unwrap()),
+                                    ),
+                                    _ => self.error_expression(String::from(format!("Expected module path to follow the template <prefix:path> and received {:?}", module_path)))
+                                }
+                            }
+                            other => self.error_expression(String::from(format!("Only string literals can be passed to import statements, instead received: {:?}", other))),
+                        }
+                    }
+                    Expression::Identifier(Identifier { name }) if name.as_str() == "export" => {
+                        // unwrapping the first argument because the zero arguments case is being handled above
+                        let export_argument = arguments.first().unwrap();
+
+                        match arguments.len() {
+                            1 => Expression::Export(Box::new(export_argument.clone())),
+                            num_args => self.error_expression(String::from(format!(
+                                "Expected only one argument to export function. Received {:?}",
+                                num_args
+                            ))),
+                        }
+                    }
+                    _ => Expression::Call(Box::new(block_identifier), arguments),
+                }
             }
             None => {
                 self.error_expression(String::from("Error parsing arguments when calling block"))
             }
+        }
+    }
+
+    fn parse_access_expression(&mut self, block_identifier: Expression) -> Expression {
+        let current_token = self.tokens.next();
+
+        match current_token {
+            Some(current_token) => {
+                let key = self.parse_expression_with_precedence(current_token, PRECEDENCE_LOWEST);
+
+                Expression::Access(Box::new(block_identifier), Box::new(key))
+            }
+            None => Expression::Invalid(Error {
+                message: String::from("Unexpected EOF while parsing access expression"),
+            }),
         }
     }
 
@@ -647,9 +713,49 @@ impl<'a> Parser<'a> {
                 }
             }
             lexer::Token::Delimiter('[') => self.parse_vector_expression(),
-            lexer::Token::Identifier(identifier) => Expression::Identifier(Identifier {
-                name: identifier.clone(),
-            }),
+            lexer::Token::Identifier(identifier) => {
+                let peek_token = self.tokens.peek();
+
+                match peek_token {
+                    Some(&&lexer::Token::Delimiter('[')) => {
+                        self.tokens.next();
+
+                        let current_token = self.tokens.next();
+
+                        match current_token {
+                            Some(current_token) => {
+                                let delimited_expression = self.parse_expression_with_precedence(
+                                    current_token,
+                                    PRECEDENCE_LOWEST,
+                                );
+                                let peek_token = self.tokens.peek();
+
+                                match peek_token {
+                                    Some(&&lexer::Token::Delimiter(']')) => {
+                                        self.tokens.next();
+
+                                        Expression::Access(
+                                            Box::new(Expression::Identifier(Identifier {
+                                                name: identifier.clone(),
+                                            })),
+                                            Box::new(delimited_expression),
+                                        )
+                                    }
+                                    _ => self.error_expression(String::from(
+                                        "Unexpected token after group expression",
+                                    )),
+                                }
+                            }
+                            None => self.error_expression(String::from(
+                                "Missing token after open bracket during collection access",
+                            )),
+                        }
+                    }
+                    _ => Expression::Identifier(Identifier {
+                        name: identifier.clone(),
+                    }),
+                }
+            }
             lexer::Token::Keyword(_fn) if _fn == "fn" => {
                 let peek_token = self.tokens.peek();
 
@@ -748,6 +854,10 @@ impl<'a> Parser<'a> {
                 Some(&&lexer::Token::Delimiter('(')) => {
                     self.tokens.next();
                     left_expression = self.parse_call_expression(left_expression);
+                }
+                Some(&&lexer::Token::Delimiter('[')) => {
+                    self.tokens.next();
+                    left_expression = self.parse_access_expression(left_expression);
                 }
                 _ => break,
             };
@@ -1095,5 +1205,36 @@ mod tests {
                 ))]),
             ),
         );
+    }
+
+    #[test]
+    fn it_parses_access_with_integer() {
+        assert_statement_eq(
+            "f[0]",
+            Statement::Expression(Expression::Access(
+                Box::new(Expression::Identifier(Identifier {
+                    name: String::from("f"),
+                })),
+                Box::new(Expression::Integer(String::from("0"))),
+            )),
+        )
+    }
+
+    #[test]
+    fn it_parses_exports() {
+        assert_statement_eq(
+            "export(1)",
+            Statement::Expression(Expression::Export(Box::new(Expression::Integer(
+                String::from("1"),
+            )))),
+        )
+    }
+
+    #[test]
+    fn it_parses_imports() {
+        assert_statement_eq(
+            "import(\"bifs:io\")",
+            Statement::Expression(Expression::Import(String::from("bifs"), String::from("io"))),
+        )
     }
 }
