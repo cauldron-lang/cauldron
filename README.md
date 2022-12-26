@@ -64,12 +64,19 @@ nums = map([1, 2, 3], fn(a) { a + 1 });
 
 #### Algebraic Data Types
 ADTs are constructed from one of two possible composite types: product and sum types. Product types are a set of labeled fields that have an AND relationship with each other, e.g. `car(color, make, model)`. Sum types can be used to represent entities with an OR relationship, e.g. `car(color, make, model) | bicycle(color, manufacturer, model, type)`.
+
+- ADTs are declared using the keyword `adt` followed by a scope where each line should start with a pipe `|` character followed by the structure declaration:
 ```
 adt {
-  | car(color, make, model) 
-  | bicycle(color, model, manufacturer)
+  | car(color, make, model)
+  | bicycle(color, model, manufacturer, type)
+  | skateboard
 }
-commuter = bicycle("red", "Bike Maker LLC", "RB1", "road")
+
+courier = bicycle("red", "Bike Maker LLC", "RB1", "road")
+courier.color == "red"
+courier.model == "RB1"
+pedestrian = skateboard()
 ```
 
 ### Control Flow
