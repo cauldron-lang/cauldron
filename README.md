@@ -62,6 +62,16 @@ apply(add5, 5) == 10;
 nums = map([1, 2, 3], fn(a) { a + 1 });
 ```
 
+#### Algebraic Data Types
+ADTs are constructed from one of two possible composite types: product and sum types. Product types are a set of labeled fields that have an AND relationship with each other, e.g. `car(color, make, model)`. Sum types can be used to represent entities with an OR relationship, e.g. `car(color, make, model) | bicycle(color, manufacturer, model, type)`.
+```
+adt {
+  | car(color, make, model) 
+  | bicycle(color, model, manufacturer)
+}
+commuter = bicycle("red", "Bike Maker LLC", "RB1", "road")
+```
+
 ### Control Flow
 - Conditionals must use `if` and optionally `else` keywords
 ```
@@ -118,3 +128,6 @@ io.print("Hello World!");
 
 #### Formatting
 - Cauldron comes with a builtin formatting tool called `cauldron_fmt`
+
+## Resources
+- [Pyret Programming Language](https://www.pyret.org/)
