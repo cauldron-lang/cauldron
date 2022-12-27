@@ -317,6 +317,7 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
 
             Object::Void
         }
+        parser::Expression::ADT(_) => todo!(),
     }
 }
 

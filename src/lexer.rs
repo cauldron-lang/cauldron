@@ -35,7 +35,7 @@ pub fn tokenize(str: &str) -> Tokens {
     let mut characters = str.chars().peekable();
     let valid_integer = Regex::new("^[0-9]+$").unwrap();
     let valid_alphanum = Regex::new("^[a-zA-Z0-9_]+$").unwrap();
-    let valid_keyword = Regex::new("^(if|fn|while)$").unwrap();
+    let valid_keyword = Regex::new("^(if|fn|while|adt)$").unwrap();
     let valid_delimiter = Regex::new("^(,|;|\\(|\\)|\\{|\\}|\\[|\\]|\\|)$").unwrap();
     let valid_boolean = Regex::new("^(true|false)$").unwrap();
 
@@ -399,6 +399,24 @@ mod tests {
             Token::Delimiter('('),
             Token::Integer(String::from("1")),
             Token::Delimiter(')'),
+            Token::Delimiter('}'),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn it_lexes_adts() {
+        let actual = tokenize("adt{ some(a) | none }");
+        let expected = Tokens::from(vec![
+            Token::Keyword(String::from("adt")),
+            Token::Delimiter('{'),
+            Token::Identifier(String::from("some")),
+            Token::Delimiter('('),
+            Token::Identifier(String::from("a")),
+            Token::Delimiter(')'),
+            Token::Delimiter('|'),
+            Token::Identifier(String::from("none")),
             Token::Delimiter('}'),
         ]);
 
