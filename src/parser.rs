@@ -70,6 +70,12 @@ pub enum ADT {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum Type {
+    Type(String),
+    Illegal(Error),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Call(Box<Expression>, Vec<Expression>),
     Access(Box<Expression>, Box<Expression>),
@@ -86,7 +92,7 @@ pub enum Expression {
     Map(Map),
     Import(String, String),
     Export(Box<Expression>),
-    ADT(ADT),
+    ADT(Type, ADT),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -800,6 +806,20 @@ impl<'a> Parser<'a> {
             }
             lexer::Token::Keyword(keyword) if keyword == "adt" => {
                 let current_token = self.tokens.next();
+                let _type = match current_token {
+                    Some(lexer::Token::Type(_type)) => Type::Type(_type.clone()),
+                    Some(token) => Type::Illegal(Error {
+                        message: format!(
+                            "Expected type after keyword 'adt' instead received {:?}",
+                            token
+                        ),
+                    }),
+                    None => Type::Illegal(Error {
+                        message: String::from("Unexpected EOF after keyword 'adt'"),
+                    }),
+                };
+
+                let current_token = self.tokens.next();
 
                 match current_token {
                     Some(lexer::Token::Delimiter('{')) => {
@@ -855,9 +875,9 @@ impl<'a> Parser<'a> {
                             1 => {
                                 let product = adts.first().unwrap();
 
-                                Expression::ADT(product.clone())
+                                Expression::ADT(_type, product.clone())
                             }
-                            _ => Expression::ADT(ADT::Sum(adts)),
+                            _ => Expression::ADT(_type, ADT::Sum(adts)),
                         }
                     }
                     Some(invalid_token) => {
@@ -879,6 +899,7 @@ impl<'a> Parser<'a> {
             lexer::Token::Delimiter(_) => todo!(),
             lexer::Token::MapInitializer(_) => todo!(),
             lexer::Token::MapKeySuffix(_) => todo!(),
+            lexer::Token::Type(_) => todo!(),
         }
     }
 
@@ -990,8 +1011,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        parse, Arguments, Block, Condition, Function, Identifier, Map, Program, Statement, Vector,
-        ADT,
+        parse, Arguments, Block, Condition, Function, Identifier, Map, Program, Statement, Type,
+        Vector, ADT,
     };
     use crate::{
         lexer::tokenize,
@@ -1324,23 +1345,26 @@ mod tests {
     #[test]
     fn it_parses_adts() {
         assert_statement_eq(
-            "adt{ some(a) | none }",
-            Statement::Expression(Expression::ADT(ADT::Sum(vec![
-                ADT::Product(
-                    Identifier {
-                        name: String::from("some"),
-                    },
-                    Arguments::Arguments(vec![Identifier {
-                        name: String::from("a"),
-                    }]),
-                ),
-                ADT::Product(
-                    Identifier {
-                        name: String::from("none"),
-                    },
-                    Arguments::Arguments(vec![]),
-                ),
-            ]))),
+            "adt Maybe { some(a) | none }",
+            Statement::Expression(Expression::ADT(
+                Type::Type(String::from("Maybe")),
+                ADT::Sum(vec![
+                    ADT::Product(
+                        Identifier {
+                            name: String::from("some"),
+                        },
+                        Arguments::Arguments(vec![Identifier {
+                            name: String::from("a"),
+                        }]),
+                    ),
+                    ADT::Product(
+                        Identifier {
+                            name: String::from("none"),
+                        },
+                        Arguments::Arguments(vec![]),
+                    ),
+                ]),
+            )),
         )
     }
 }

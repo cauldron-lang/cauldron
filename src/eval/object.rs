@@ -8,6 +8,12 @@ pub struct MapKey {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum BIF {
+    Print,
+    CreateProduct(Arguments),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Object {
     Void,
     Integer(i32),
@@ -18,7 +24,8 @@ pub enum Object {
     Function(Arguments, Block, Environment),
     Vector(Vec<Object>),
     Map(HashMap<MapKey, Box<Object>>),
-    BIF(String),
+    BIF(BIF),
+    Product(String, HashMap<String, Object>),
 }
 
 #[derive(Debug, PartialEq, Clone)]

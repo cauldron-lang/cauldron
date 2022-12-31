@@ -4,7 +4,7 @@ pub mod object;
 
 use crate::{
     lexer,
-    parser::{self, Arguments, Block, Function, InfixOperator, PrefixOperator},
+    parser::{self, Arguments, Block, Function, InfixOperator, PrefixOperator, Type, ADT},
 };
 use env::Environment;
 use object::{MapKey, Object, Result};
@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use self::bifs::print;
+use self::{bifs::print, object::BIF};
 
 fn eval_expression(expression: parser::Expression, environment: &mut Environment) -> Object {
     match expression {
@@ -50,7 +50,7 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
                                 )),
                             }
                         }
-                        Object::BIF(name) if name.as_str() == "print" => {
+                        Object::BIF(BIF::Print) => {
                             if arguments.len() != 1 {
                                 return Object::Error(format!("Can only call print(str) with one argument but was given: {:?}", arguments.len()));
                             }
@@ -65,7 +65,26 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
                                 object => print(format!("{:?}", object)),
                             }
                         }
+                        Object::BIF(BIF::CreateProduct(parameters)) => match parameters {
+                            Arguments::Arguments(parameters) => {
+                                let mut product_data: HashMap<String, Object> = HashMap::new();
 
+                                for (_i, (identifier, expression)) in
+                                    parameters.iter().zip(arguments.iter()).enumerate()
+                                {
+                                    product_data.insert(
+                                        identifier.name.clone(),
+                                        eval_expression(expression.clone(), environment),
+                                    );
+                                }
+
+                                Object::Product(identifier.name, product_data)
+                            }
+                            Arguments::Invalid(error) => Object::Error(format!(
+                                "Cannot create product due to error: {:?}",
+                                error.message
+                            )),
+                        },
                         other => Object::Error(format!("Object is not callable: {:?}", other)),
                     },
                     None => Object::Error(format!(
@@ -183,7 +202,7 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
         parser::Expression::Import(prefix, module) => match (prefix.as_str(), module.as_str()) {
             ("bifs", "io") => {
                 let mut io = HashMap::new();
-                let print_fn = Object::BIF(String::from("print"));
+                let print_fn = Object::BIF(BIF::Print);
 
                 io.insert(
                     MapKey {
@@ -317,8 +336,23 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
 
             Object::Void
         }
-        parser::Expression::ADT(_) => todo!(),
+        parser::Expression::ADT(_type, adt) => eval_adt(_type, adt, environment),
     }
+}
+
+fn eval_adt(_type: Type, adt: ADT, environment: &mut Environment) -> Object {
+    match adt {
+        parser::ADT::Product(identifier, arguments) => {
+            environment.set(identifier.name, Object::BIF(BIF::CreateProduct(arguments)))
+        }
+        parser::ADT::Sum(adts) => {
+            for adt in adts.iter() {
+                eval_adt(_type.clone(), adt.clone(), environment);
+            }
+        }
+    };
+
+    Object::Void
 }
 
 fn eval_block(block: parser::Block, environment: &mut Environment) -> Result {
@@ -424,7 +458,7 @@ pub fn eval(program: parser::Program, environment: &mut Environment) -> Result {
 mod tests {
     use std::{collections::HashMap, env::temp_dir, fs::File, io::Write, path::PathBuf};
 
-    use super::{eval, Environment, MapKey, Object, Result};
+    use super::{eval, object::BIF, Environment, MapKey, Object, Result};
     use crate::{lexer::tokenize, parser::parse};
 
     fn stub_env() -> Environment {
@@ -659,7 +693,7 @@ mod tests {
             MapKey {
                 name: String::from("print"),
             },
-            Box::new(Object::BIF(String::from("print"))),
+            Box::new(Object::BIF(BIF::Print)),
         );
 
         assert_evaluated_object(code, Object::Map(map));
@@ -692,5 +726,18 @@ mod tests {
         file.write("export(1)".as_bytes()).unwrap();
 
         assert_evaluated_object(code.as_str(), Object::Integer(1));
+    }
+
+    #[test]
+    fn it_evaluates_adts() {
+        let code = "adt Maybe { some(value) | none }; maybe_one = some(1); maybe_one";
+
+        assert_evaluated_object(
+            code,
+            Object::Product(
+                String::from("some"),
+                HashMap::from([(String::from("value"), Object::Integer(1))]),
+            ),
+        );
     }
 }

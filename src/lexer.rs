@@ -26,6 +26,7 @@ pub enum Token {
     MapKeySuffix(char),
     Operator(Operator),
     String(String),
+    Type(String),
 }
 
 pub type Tokens = Vec<Token>;
@@ -36,6 +37,8 @@ pub fn tokenize(str: &str) -> Tokens {
     let valid_integer = Regex::new("^[0-9]+$").unwrap();
     let valid_alphanum = Regex::new("^[a-zA-Z0-9_]+$").unwrap();
     let valid_keyword = Regex::new("^(if|fn|while|adt)$").unwrap();
+    let valid_type = Regex::new("^[A-Z]{1}[a-zA-Z0-9]+$").unwrap();
+    let valid_variable = Regex::new("^[a-z0-9_]+$").unwrap();
     let valid_delimiter = Regex::new("^(,|;|\\(|\\)|\\{|\\}|\\[|\\]|\\|)$").unwrap();
     let valid_boolean = Regex::new("^(true|false)$").unwrap();
 
@@ -119,7 +122,13 @@ pub fn tokenize(str: &str) -> Tokens {
                     boolean if valid_boolean.is_match(boolean) => {
                         tokens.push(Token::Boolean(boolean == "true"))
                     }
-                    variable => tokens.push(Token::Identifier(String::from(variable))),
+                    _type if valid_type.is_match(_type) => {
+                        tokens.push(Token::Type(String::from(_type)))
+                    }
+                    variable if valid_variable.is_match(variable) => {
+                        tokens.push(Token::Identifier(String::from(variable)))
+                    }
+                    _ => tokens.push(Token::Illegal),
                 }
             }
             None => break,
@@ -202,6 +211,18 @@ mod tests {
         let actual = tokenize("a = 123");
         let expected = Tokens::from(vec![
             Token::Identifier(String::from("a")),
+            Token::Operator(Operator::Assignment),
+            Token::Integer(String::from("123")),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn it_lexes_illegal_assignment() {
+        let actual = tokenize("A = 123");
+        let expected = Tokens::from(vec![
+            Token::Illegal,
             Token::Operator(Operator::Assignment),
             Token::Integer(String::from("123")),
         ]);
@@ -407,9 +428,10 @@ mod tests {
 
     #[test]
     fn it_lexes_adts() {
-        let actual = tokenize("adt{ some(a) | none }");
+        let actual = tokenize("adt Maybe { some(a) | none }");
         let expected = Tokens::from(vec![
             Token::Keyword(String::from("adt")),
+            Token::Type(String::from("Maybe")),
             Token::Delimiter('{'),
             Token::Identifier(String::from("some")),
             Token::Delimiter('('),
