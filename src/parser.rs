@@ -64,6 +64,18 @@ pub enum Callable {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum ADT {
+    Product(Identifier, Arguments),
+    Sum(Vec<ADT>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Type {
+    Type(String),
+    Illegal(Error),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
     Call(Box<Expression>, Vec<Expression>),
     Access(Box<Expression>, Box<Expression>),
@@ -80,6 +92,7 @@ pub enum Expression {
     Map(Map),
     Import(String, String),
     Export(Box<Expression>),
+    ADT(Type, ADT),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -791,12 +804,102 @@ impl<'a> Parser<'a> {
                     )),
                 }
             }
+            lexer::Token::Keyword(keyword) if keyword == "adt" => {
+                let current_token = self.tokens.next();
+                let _type = match current_token {
+                    Some(lexer::Token::Type(_type)) => Type::Type(_type.clone()),
+                    Some(token) => Type::Illegal(Error {
+                        message: format!(
+                            "Expected type after keyword 'adt' instead received {:?}",
+                            token
+                        ),
+                    }),
+                    None => Type::Illegal(Error {
+                        message: String::from("Unexpected EOF after keyword 'adt'"),
+                    }),
+                };
+
+                let current_token = self.tokens.next();
+
+                match current_token {
+                    Some(lexer::Token::Delimiter('{')) => {
+                        let mut adts = vec![];
+
+                        loop {
+                            let current_token = self.tokens.next();
+
+                            match current_token {
+                                Some(lexer::Token::Identifier(identifier)) => {
+                                    let peek_token = self.tokens.peek();
+
+                                    match peek_token {
+                                        Some(lexer::Token::Delimiter('(')) => {
+                                            self.tokens.next();
+                                            let arguments = self.parse_arguments();
+
+                                            adts.push(ADT::Product(
+                                                Identifier {
+                                                    name: identifier.clone(),
+                                                },
+                                                arguments,
+                                            ));
+                                        }
+                                        _ => adts.push(ADT::Product(
+                                            Identifier {
+                                                name: identifier.clone(),
+                                            },
+                                            Arguments::Arguments(vec![]),
+                                        )),
+                                    }
+                                }
+                                Some(lexer::Token::Delimiter('|')) => continue,
+                                Some(lexer::Token::Delimiter('}')) => break,
+                                Some(token) => {
+                                    return self.error_expression(format!(
+                                        "Unexpected token in 'adt' declaration: {:?}",
+                                        token
+                                    ))
+                                }
+                                None => {
+                                    return self.error_expression(String::from(
+                                        "Unexpected EOF while parsing 'adt' declaration",
+                                    ))
+                                }
+                            };
+                        }
+
+                        match adts.len() {
+                            0 => self.error_expression(String::from(
+                                "Must include sum or product type in ADT declaration",
+                            )),
+                            1 => {
+                                let product = adts.first().unwrap();
+
+                                Expression::ADT(_type, product.clone())
+                            }
+                            _ => Expression::ADT(_type, ADT::Sum(adts)),
+                        }
+                    }
+                    Some(invalid_token) => {
+                        let token = invalid_token;
+
+                        self.error_expression(format!(
+                            "Expected block following 'adt' keyword instead given: {:?}",
+                            token
+                        ))
+                    }
+                    None => self.error_expression(String::from(
+                        "Missing condition and consequence of 'adt' expression",
+                    )),
+                }
+            }
             lexer::Token::Keyword(_) => todo!(),
             lexer::Token::Boolean(boolean) => Expression::Boolean(*boolean),
             lexer::Token::Illegal => todo!(),
             lexer::Token::Delimiter(_) => todo!(),
             lexer::Token::MapInitializer(_) => todo!(),
             lexer::Token::MapKeySuffix(_) => todo!(),
+            lexer::Token::Type(_) => todo!(),
         }
     }
 
@@ -908,7 +1011,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        parse, Arguments, Block, Condition, Function, Identifier, Map, Program, Statement, Vector,
+        parse, Arguments, Block, Condition, Function, Identifier, Map, Program, Statement, Type,
+        Vector, ADT,
     };
     use crate::{
         lexer::tokenize,
@@ -1235,6 +1339,32 @@ mod tests {
         assert_statement_eq(
             "import(\"bifs:io\")",
             Statement::Expression(Expression::Import(String::from("bifs"), String::from("io"))),
+        )
+    }
+
+    #[test]
+    fn it_parses_adts() {
+        assert_statement_eq(
+            "adt Maybe { some(a) | none }",
+            Statement::Expression(Expression::ADT(
+                Type::Type(String::from("Maybe")),
+                ADT::Sum(vec![
+                    ADT::Product(
+                        Identifier {
+                            name: String::from("some"),
+                        },
+                        Arguments::Arguments(vec![Identifier {
+                            name: String::from("a"),
+                        }]),
+                    ),
+                    ADT::Product(
+                        Identifier {
+                            name: String::from("none"),
+                        },
+                        Arguments::Arguments(vec![]),
+                    ),
+                ]),
+            )),
         )
     }
 }

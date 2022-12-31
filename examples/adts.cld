@@ -1,0 +1,16 @@
+io = import("bifs:io") 
+print = io["print"]
+
+adt Vehicle {
+  | car(color, make, model)
+  | bicycle(color, model, manufacturer, type)
+  | skateboard
+}
+
+courier = bicycle("red", "Bike Maker LLC", "RB1", "road")
+courier["color"] == "red"
+courier["model"] == "RB1"
+pedestrian = skateboard()
+
+print(courier)
+print(pedestrian)
