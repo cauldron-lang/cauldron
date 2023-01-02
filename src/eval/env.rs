@@ -19,6 +19,10 @@ impl Environment {
         }
     }
 
+    pub fn has(&self, key: &String) -> bool {
+        self.variables.contains_key(key)
+    }
+
     pub fn get(&self, key: &Identifier) -> Option<&Object> {
         self.variables.get(&key.name)
     }

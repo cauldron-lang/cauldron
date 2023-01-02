@@ -12,6 +12,7 @@ pub enum Operator {
     Bang,
     Divide,
     Multiply,
+    ReAssignment,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -73,7 +74,7 @@ pub fn tokenize(str: &str) -> Tokens {
                     tokens.push(Token::Operator(Operator::Equals));
                     characters.next();
                 } else {
-                    tokens.push(Token::Operator(Operator::Assignment));
+                    tokens.push(Token::Operator(Operator::ReAssignment));
                 }
             }
             Some('!') => {
@@ -91,7 +92,13 @@ pub fn tokenize(str: &str) -> Tokens {
             Some('>') => tokens.push(Token::Operator(Operator::GreaterThan)),
             Some('<') => tokens.push(Token::Operator(Operator::LessThan)),
             Some('%') => tokens.push(Token::MapInitializer('%')),
-            Some(':') => tokens.push(Token::MapKeySuffix(':')),
+            Some(':') => match peek {
+                Some(&'=') => {
+                    tokens.push(Token::Operator(Operator::Assignment));
+                    characters.next();
+                }
+                _ => tokens.push(Token::MapKeySuffix(':')),
+            },
             Some(delimiter) if valid_delimiter.is_match(String::from(delimiter).as_str()) => {
                 tokens.push(Token::Delimiter(delimiter))
             }
@@ -208,7 +215,7 @@ mod tests {
 
     #[test]
     fn it_lexes_assignment() {
-        let actual = tokenize("a = 123");
+        let actual = tokenize("a := 123");
         let expected = Tokens::from(vec![
             Token::Identifier(String::from("a")),
             Token::Operator(Operator::Assignment),
@@ -219,8 +226,20 @@ mod tests {
     }
 
     #[test]
+    fn it_lexes_reassignment() {
+        let actual = tokenize("a = 123");
+        let expected = Tokens::from(vec![
+            Token::Identifier(String::from("a")),
+            Token::Operator(Operator::ReAssignment),
+            Token::Integer(String::from("123")),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn it_lexes_illegal_assignment() {
-        let actual = tokenize("A = 123");
+        let actual = tokenize("A := 123");
         let expected = Tokens::from(vec![
             Token::Illegal,
             Token::Operator(Operator::Assignment),
@@ -234,7 +253,7 @@ mod tests {
     fn it_lexes_assignment_with_newlines() {
         let actual = tokenize(
             "a 
-        = 
+        := 
         123",
         );
         let expected = Tokens::from(vec![
@@ -248,7 +267,7 @@ mod tests {
 
     #[test]
     fn it_lexes_callable_assignment() {
-        let actual = tokenize("add = fn(a, b) { a + b }");
+        let actual = tokenize("add := fn(a, b) { a + b }");
         let expected = Tokens::from(vec![
             Token::Identifier(String::from("add")),
             Token::Operator(Operator::Assignment),
