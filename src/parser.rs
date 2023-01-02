@@ -127,6 +127,7 @@ pub enum Arguments {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Assignment(String, Expression),
+    ReAssignment(String, Expression),
     Expression(Expression),
     Conditional(Condition, Block),
     Loop(Condition, Block),
@@ -178,7 +179,24 @@ impl<'a> Parser<'a> {
                 self.tokens.next();
                 let next_token = self.tokens.next();
 
-                self.parse_assignment_statement(name.clone(), next_token)
+                self.parse_assignment_statement(
+                    name.clone(),
+                    next_token,
+                    lexer::Operator::Assignment,
+                )
+            }
+            (
+                lexer::Token::Identifier(name),
+                Some(&&lexer::Token::Operator(lexer::Operator::ReAssignment)),
+            ) => {
+                self.tokens.next();
+                let next_token = self.tokens.next();
+
+                self.parse_assignment_statement(
+                    name.clone(),
+                    next_token,
+                    lexer::Operator::ReAssignment,
+                )
             }
             (lexer::Token::Delimiter('{'), _) => {
                 let next_token = self.tokens.next();
@@ -315,6 +333,7 @@ impl<'a> Parser<'a> {
         &mut self,
         identifier: String,
         current_token: Option<&lexer::Token>,
+        assignment_token: lexer::Operator,
     ) -> Statement {
         match current_token {
             None => self.error_statement(String::from(
@@ -322,7 +341,12 @@ impl<'a> Parser<'a> {
             )),
             _ => {
                 let expression = self.parse_expression(current_token);
-                Statement::Assignment(identifier, expression)
+
+                if assignment_token == lexer::Operator::Assignment {
+                    Statement::Assignment(identifier, expression)
+                } else {
+                    Statement::ReAssignment(identifier, expression)
+                }
             }
         }
     }
@@ -1162,7 +1186,7 @@ mod tests {
     #[test]
     fn it_parses_assignment_statement() {
         assert_statement_eq(
-            "a = 1",
+            "a := 1",
             Statement::Assignment(String::from("a"), Expression::Integer(String::from("1"))),
         );
     }
@@ -1170,7 +1194,7 @@ mod tests {
     #[test]
     fn it_parses_assignment_in_block_statement() {
         assert_statement_eq(
-            "{ a = 1 }",
+            "{ a := 1 }",
             Statement::Expression(Expression::Block(Block::Statements(vec![
                 Statement::Assignment(String::from("a"), Expression::Integer(String::from("1"))),
             ]))),
@@ -1226,7 +1250,7 @@ mod tests {
     #[test]
     fn it_parses_string_assignment() {
         assert_statement_eq(
-            "foo = \"bar\"",
+            "foo := \"bar\"",
             Statement::Assignment(String::from("foo"), Expression::String(String::from("bar"))),
         )
     }

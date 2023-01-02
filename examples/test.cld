@@ -1,7 +1,7 @@
-exported = import("export.cld")
-io = import("bifs:io") 
-print = io["print"]
-new_print = fn(printable) {
+exported := import("export.cld")
+io := import("bifs:io") 
+print := io["print"]
+new_print := fn(printable) {
     print("IMPORTED: " + printable)
 }
 

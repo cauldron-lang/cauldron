@@ -8,11 +8,7 @@ use crate::{
 };
 use env::Environment;
 use object::{MapKey, Object, Result};
-use std::{
-    collections::HashMap,
-    fs,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, fs, path::PathBuf};
 
 use self::{bifs::print, object::BIF};
 
@@ -393,6 +389,26 @@ fn eval_statement(statement: parser::Statement, environment: &mut Environment) -
         parser::Statement::Assignment(identifier, expression) => {
             let object = eval_expression(expression, environment);
 
+            if environment.has(&identifier) {
+                return Result::Object(Object::Error(format!(
+                    "Cannot declare and assign to existing variable {:?}",
+                    identifier.clone()
+                )));
+            }
+
+            environment.set(identifier, object);
+            Result::Void
+        }
+        parser::Statement::ReAssignment(identifier, expression) => {
+            let object = eval_expression(expression, environment);
+
+            if !environment.has(&identifier) {
+                return Result::Object(Object::Error(format!(
+                    "Cannot re-assign value to variable that hasn't been declared: {:?}",
+                    identifier
+                )));
+            }
+
             environment.set(identifier, object);
             Result::Void
         }
@@ -555,17 +571,17 @@ mod tests {
 
     #[test]
     fn it_evaluates_assignment_statements() {
-        assert_evaluated_object("a = 1; a", Object::Integer(1));
+        assert_evaluated_object("a := 1; a", Object::Integer(1));
     }
 
     #[test]
     fn it_evaluates_string_assignment_statements() {
-        assert_evaluated_object("foo = \"bar\"; foo", Object::String(String::from("bar")))
+        assert_evaluated_object("foo := \"bar\"; foo", Object::String(String::from("bar")))
     }
 
     #[test]
     fn it_evaluates_conditional_statements_truthy() {
-        let code = "if (true) { a = 1; b = 2 }";
+        let code = "if (true) { a := 1; b := 2 }";
         let parsed = parse(tokenize(code));
         let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
@@ -580,7 +596,7 @@ mod tests {
 
     #[test]
     fn it_evaluates_conditional_statements_falsey() {
-        let code = "if (false) { a = 1; b = 2 }";
+        let code = "if (false) { a := 1; b := 2 }";
         let parsed = parse(tokenize(code));
         let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
@@ -592,14 +608,14 @@ mod tests {
 
     #[test]
     fn it_evaluates_function_application() {
-        let code = "add = fn(a, b) { a + b }; add(1, 1)";
+        let code = "add := fn(a, b) { a + b }; add(1, 1)";
 
         assert_evaluated_object(code, Object::Integer(2));
     }
 
     #[test]
     fn it_evaluates_passing_functions_as_arguments() {
-        let code = "ap = fn(f, i) { f(i) }; ap(fn(a) { a + 1 }, 1)";
+        let code = "ap := fn(f, i) { f(i) }; ap(fn(a) { a + 1 }, 1)";
 
         assert_evaluated_object(code, Object::Integer(2));
     }
@@ -658,7 +674,7 @@ mod tests {
 
     #[test]
     fn it_evaluates_loop_statements() {
-        let code = "i = 0; while (i < 3) { i = i + 1 }";
+        let code = "i := 0; while (i < 3) { i = i + 1 }";
         let parsed = parse(tokenize(code));
         let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
@@ -672,14 +688,14 @@ mod tests {
 
     #[test]
     fn it_evaluates_access_for_strings() {
-        let code = "f = \"foo\"; f[1]";
+        let code = "f := \"foo\"; f[1]";
 
         assert_evaluated_object(code, Object::String(String::from("o")));
     }
 
     #[test]
     fn it_evaluates_access_for_maps() {
-        let code = "f = %[foo: \"bar\"]; f[\"foo\"]";
+        let code = "f := %[foo: \"bar\"]; f[\"foo\"]";
 
         assert_evaluated_object(code, Object::String(String::from("bar")));
     }
@@ -730,7 +746,7 @@ mod tests {
 
     #[test]
     fn it_evaluates_adts() {
-        let code = "adt Maybe { some(value) | none }; maybe_one = some(1); maybe_one";
+        let code = "adt Maybe { some(value) | none }; maybe_one := some(1); maybe_one";
 
         assert_evaluated_object(
             code,
