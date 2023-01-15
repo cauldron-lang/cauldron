@@ -1,11 +1,13 @@
 ## Overview
 Cauldron is a programming language focusing on simplicity and consistency
 
+![Logo](https://github.com/elixir-lang/elixir-lang.github.com/raw/main/cauldron_logo.png)
+
 ### Variables
 Labeled buckets that can be used to hold values of primitive types. Variables must only include the following characters `^[a-z0-9_]+$`.
 
 #### Assignment
-Variables can be assigned to a value via the assignment operator: `:=`. This operator only works on variables that haven't already been assigned a value. To re-assign a value to a variable use the re-assignment operator of `=`. This distinction ensures variables are not accidentally overwritten during the assignment process. 
+Variables are declared and assigned a value via the assignment operator: `:=`. This operator only works on variables that haven't already been declared. To re-assign a value to a variable use the re-assignment operator of `=`. This distinction helps to prevent accidental overwriting of variables.
 ```
 # Allowed
 foo := "bar" # "bar" can be assigned to foo since foo hasn't been assigned a variable yet
