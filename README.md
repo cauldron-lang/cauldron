@@ -1,7 +1,7 @@
 ## Overview
 Cauldron is a programming language focusing on simplicity and consistency
 
-![Logo](https://github.com/elixir-lang/elixir-lang.github.com/raw/main/cauldron_logo.png)
+![Logo](https://raw.githubusercontent.com/cauldron-lang/cauldron/1c99a4ee3e606632d11bc084b1dea7d8656443bf/cauldron_logo.png)
 
 ### Variables
 Labeled buckets that can be used to hold values of primitive types. Variables must only include the following characters `^[a-z0-9_]+$`.
