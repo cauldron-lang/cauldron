@@ -13,6 +13,7 @@ pub enum Operator {
     Divide,
     Multiply,
     ReAssignment,
+    MatchArrow,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -37,7 +38,7 @@ pub fn tokenize(str: &str) -> Tokens {
     let mut characters = str.chars().peekable();
     let valid_integer = Regex::new("^[0-9]+$").unwrap();
     let valid_alphanum = Regex::new("^[a-zA-Z0-9_]+$").unwrap();
-    let valid_keyword = Regex::new("^(if|fn|while|adt)$").unwrap();
+    let valid_keyword = Regex::new("^(if|fn|while|adt|match)$").unwrap();
     let valid_type = Regex::new("^[A-Z]{1}[a-zA-Z0-9]+$").unwrap();
     let valid_variable = Regex::new("^[a-z0-9_]+$").unwrap();
     let valid_delimiter = Regex::new("^(,|;|\\(|\\)|\\{|\\}|\\[|\\]|\\|)$").unwrap();
@@ -82,10 +83,17 @@ pub fn tokenize(str: &str) -> Tokens {
                     tokens.push(Token::Operator(Operator::NotEquals));
                     characters.next();
                 } else {
-                    tokens.push(Token::Operator(Operator::Bang))
+                    tokens.push(Token::Operator(Operator::Bang));
                 }
             }
-            Some('-') => tokens.push(Token::Operator(Operator::Minus)),
+            Some('-') => {
+                if peek == Some(&'>') {
+                    tokens.push(Token::Operator(Operator::MatchArrow));
+                    characters.next();
+                } else {
+                    tokens.push(Token::Operator(Operator::Minus));
+                }
+            }
             Some('+') => tokens.push(Token::Operator(Operator::Plus)),
             Some('/') => tokens.push(Token::Operator(Operator::Divide)),
             Some('*') => tokens.push(Token::Operator(Operator::Multiply)),
@@ -458,6 +466,31 @@ mod tests {
             Token::Delimiter(')'),
             Token::Delimiter('|'),
             Token::Identifier(String::from("none")),
+            Token::Delimiter('}'),
+        ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn it_lexes_matches() {
+        let actual = tokenize("match(s) { some(a) -> 1 | _ -> 0 }");
+        let expected = Tokens::from(vec![
+            Token::Keyword(String::from("match")),
+            Token::Delimiter('('),
+            Token::Identifier(String::from("s")),
+            Token::Delimiter(')'),
+            Token::Delimiter('{'),
+            Token::Identifier(String::from("some")),
+            Token::Delimiter('('),
+            Token::Identifier(String::from("a")),
+            Token::Delimiter(')'),
+            Token::Operator(Operator::MatchArrow),
+            Token::Integer(String::from("1")),
+            Token::Delimiter('|'),
+            Token::Identifier(String::from("_")),
+            Token::Operator(Operator::MatchArrow),
+            Token::Integer(String::from("0")),
             Token::Delimiter('}'),
         ]);
 
