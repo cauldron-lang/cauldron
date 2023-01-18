@@ -333,6 +333,7 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
             Object::Void
         }
         parser::Expression::ADT(_type, adt) => eval_adt(_type, adt, environment),
+        parser::Expression::Match(_, _) => todo!(),
     }
 }
 
@@ -755,5 +756,13 @@ mod tests {
                 HashMap::from([(String::from("value"), Object::Integer(1))]),
             ),
         );
+    }
+
+    #[test]
+    fn it_evaluates_matches() {
+        let code =
+            "adt Maybe { some(value) | none }; maybe_one := some(1); one := match(m) { some(v) -> v | _ -> 0 }; v";
+
+        assert_evaluated_object(code, Object::Integer(1))
     }
 }

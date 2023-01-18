@@ -18,7 +18,7 @@ const PRECEDENCE_PREFIX: u8 = 5;
 const PRECEDENCE_CALL: u8 = 6;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Error {
+pub struct ParseError {
     pub message: String,
 }
 
@@ -70,9 +70,20 @@ pub enum ADT {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum MatchPattern {
+    Any,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct MatchArm {
+    match_pattern: MatchPattern,
+    expression: Expression,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Type {
     Type(String),
-    Illegal(Error),
+    Illegal(ParseError),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -85,7 +96,7 @@ pub enum Expression {
     Boolean(bool),
     Prefix(PrefixOperator, Box<Expression>),
     Infix(InfixOperator, Box<Expression>, Box<Expression>),
-    Invalid(Error),
+    Invalid(Vec<ParseError>),
     Function(Function),
     Block(Block),
     Vector(Vector),
@@ -93,6 +104,7 @@ pub enum Expression {
     Import(String, String),
     Export(Box<Expression>),
     ADT(Type, ADT),
+    Match(Box<Expression>, Vec<MatchArm>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -103,25 +115,25 @@ pub enum Condition {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Block {
     Statements(Vec<Statement>),
-    Invalid(Error),
+    Invalid(ParseError),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Vector {
     Expressions(Vec<Expression>),
-    Invalid(Error),
+    Invalid(ParseError),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Map {
     Expressions(HashMap<Identifier, Expression>),
-    Invalid(Error),
+    Invalid(ParseError),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Arguments {
     Arguments(Vec<Identifier>),
-    Invalid(Error),
+    Invalid(ParseError),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -131,7 +143,7 @@ pub enum Statement {
     Expression(Expression),
     Conditional(Condition, Block),
     Loop(Condition, Block),
-    Invalid(Error),
+    Invalid(ParseError),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -651,9 +663,9 @@ impl<'a> Parser<'a> {
 
                 Expression::Access(Box::new(block_identifier), Box::new(key))
             }
-            None => Expression::Invalid(Error {
+            None => Expression::Invalid(vec![ParseError {
                 message: String::from("Unexpected EOF while parsing access expression"),
-            }),
+            }]),
         }
     }
 
@@ -677,7 +689,7 @@ impl<'a> Parser<'a> {
                 }
                 Some(lexer::Token::Delimiter(',')) => {}
                 _ => {
-                    return Arguments::Invalid(Error {
+                    return Arguments::Invalid(ParseError {
                         message: String::from("Invalid Arguments"),
                     });
                 }
@@ -686,6 +698,150 @@ impl<'a> Parser<'a> {
 
         self.tokens.next();
         Arguments::Arguments(identifiers)
+    }
+
+    fn parse_match_arm_expression(&mut self) -> Result<Expression, Vec<ParseError>> {
+        let current_token = self.tokens.next();
+
+        match current_token {
+            Some(token) => {
+                let parsed_expression =
+                    self.parse_expression_with_precedence(token, PRECEDENCE_LOWEST);
+
+                match parsed_expression {
+                    Expression::Invalid(parse_errors) => Err(parse_errors),
+                    expression => Ok(expression),
+                }
+            }
+            None => self
+                .parse_result_error(String::from("Unexpected EOF in match arm"))
+                .map_err(|parse_error| vec![parse_error]),
+        }
+    }
+
+    fn parse_match_arm(
+        &mut self,
+        current_token: &lexer::Token,
+    ) -> Result<MatchArm, Vec<ParseError>> {
+        match current_token {
+            lexer::Token::Identifier(identifier) if identifier == "_" => {
+                let current_token = self.tokens.next();
+
+                if current_token != Some(&lexer::Token::Operator(lexer::Operator::MatchArrow)) {
+                    return self
+                        .parse_result_error(format!(
+                            "Unexpected token in match arm: {:?}",
+                            current_token
+                        ))
+                        .map_err(|parse_error| vec![parse_error]);
+                }
+
+                let parsed_expression = self.parse_match_arm_expression();
+
+                parsed_expression.map(|expression| MatchArm {
+                    match_pattern: MatchPattern::Any,
+                    expression: expression,
+                })
+            }
+            token => self
+                .parse_result_error(format!("Unexpected token in match arm: {:?}", token))
+                .map_err(|parse_error| vec![parse_error]),
+        }
+    }
+
+    fn parse_match_arms(&mut self) -> Result<Vec<MatchArm>, Vec<ParseError>> {
+        let current_token = self.tokens.next();
+
+        if current_token != Some(&lexer::Token::Delimiter('{')) {
+            return self
+                .parse_result_error(format!(
+                    "Expected open bracket token to start match arms but received: {:?}",
+                    current_token
+                ))
+                .map_err(|parse_error| vec![parse_error]);
+        }
+
+        let mut match_arms: Vec<MatchArm> = Vec::new();
+        let mut parse_errors: Vec<ParseError> = Vec::new();
+
+        loop {
+            let current_token = self.tokens.next();
+
+            match current_token {
+                Some(&lexer::Token::Delimiter('}')) => {
+                    break;
+                }
+                Some(lexer::Token::Delimiter('|')) => {
+                    continue;
+                }
+                Some(token) => {
+                    let parsed_match_arm = self.parse_match_arm(token);
+
+                    match parsed_match_arm {
+                        Ok(match_arm) => match_arms.push(match_arm),
+                        Err(other_parse_errors) => other_parse_errors
+                            .iter()
+                            .for_each(|parse_error| parse_errors.push(parse_error.clone())),
+                    }
+                }
+                None => {
+                    parse_errors.push(ParseError {
+                        message: String::from("Unexpected EOF in match expression"),
+                    });
+                    break;
+                }
+            };
+        }
+
+        if parse_errors.len() > 0 {
+            return Err(parse_errors);
+        }
+
+        Ok(match_arms)
+    }
+
+    fn parse_match_expression(&mut self) -> Result<Expression, Vec<ParseError>> {
+        let current_token = self.tokens.next();
+
+        match current_token {
+            Some(lexer::Token::Delimiter('(')) => {
+                let current_token = self.tokens.next();
+
+                match current_token {
+                    Some(current_token) => {
+                        let delimited_expression =
+                            self.parse_expression_with_precedence(current_token, PRECEDENCE_LOWEST);
+                        let peek_token = self.tokens.peek();
+
+                        match peek_token {
+                            Some(&&lexer::Token::Delimiter(')')) => {
+                                self.tokens.next();
+
+                                let parsed_match_arms = self.parse_match_arms();
+
+                                parsed_match_arms.map(|match_arms| {
+                                    Expression::Match(Box::new(delimited_expression), match_arms)
+                                })
+                            }
+                            _ => self
+                                .parse_result_error(String::from(
+                                    "Unexpected token after group expression",
+                                ))
+                                .map_err(|parse_error| vec![parse_error]),
+                        }
+                    }
+                    None => self
+                        .parse_result_error(String::from("Unexpected EOF after 'match ('"))
+                        .map_err(|parse_error| vec![parse_error]),
+                }
+            }
+            token => self
+                .parse_result_error(format!(
+                    "Expected open parenthesis after 'match' keyword but received: {:?}",
+                    token
+                ))
+                .map_err(|parse_error| vec![parse_error]),
+        }
     }
 
     fn parse_prefix_expression(&mut self, current_token: &lexer::Token) -> Expression {
@@ -708,7 +864,9 @@ impl<'a> Parser<'a> {
                 Expression::Prefix(PrefixOperator::Bang, Box::new(right_expression))
             }
             lexer::Token::Integer(integer) => Expression::Integer(integer.clone()),
-            lexer::Token::Operator(_) => todo!(),
+            lexer::Token::Operator(operator) => Expression::Invalid(vec![ParseError {
+                message: format!("Unexpected operator: {:?}", operator),
+            }]),
             lexer::Token::Delimiter('(') => {
                 let current_token = self.tokens.next();
 
@@ -832,13 +990,13 @@ impl<'a> Parser<'a> {
                 let current_token = self.tokens.next();
                 let _type = match current_token {
                     Some(lexer::Token::Type(_type)) => Type::Type(_type.clone()),
-                    Some(token) => Type::Illegal(Error {
+                    Some(token) => Type::Illegal(ParseError {
                         message: format!(
                             "Expected type after keyword 'adt' instead received {:?}",
                             token
                         ),
                     }),
-                    None => Type::Illegal(Error {
+                    None => Type::Illegal(ParseError {
                         message: String::from("Unexpected EOF after keyword 'adt'"),
                     }),
                 };
@@ -915,6 +1073,14 @@ impl<'a> Parser<'a> {
                     None => self.error_expression(String::from(
                         "Missing condition and consequence of 'adt' expression",
                     )),
+                }
+            }
+            lexer::Token::Keyword(keyword) if keyword == "match" => {
+                let parsed_match_expression = self.parse_match_expression();
+
+                match parsed_match_expression {
+                    Ok(expression) => expression,
+                    Err(parse_errors) => Expression::Invalid(parse_errors),
                 }
             }
             lexer::Token::Keyword(_) => todo!(),
@@ -1003,13 +1169,23 @@ impl<'a> Parser<'a> {
     fn error_statement(&mut self, message: String) -> Statement {
         self.seek_delimiter();
 
-        Statement::Invalid(Error { message })
+        Statement::Invalid(ParseError { message })
     }
 
     fn error_expression(&mut self, message: String) -> Expression {
         self.seek_delimiter();
 
-        Expression::Invalid(Error { message })
+        Expression::Invalid(vec![ParseError { message }])
+    }
+
+    fn parse_result_error<T>(&mut self, message: String) -> Result<T, ParseError> {
+        self.seek_delimiter();
+
+        let parse_error = ParseError {
+            message: String::from(message),
+        };
+
+        Err(parse_error)
     }
 
     fn seek_delimiter(&mut self) {
@@ -1035,8 +1211,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        parse, Arguments, Block, Condition, Function, Identifier, Map, Program, Statement, Type,
-        Vector, ADT,
+        parse, Arguments, Block, Condition, Function, Identifier, Map, MatchArm, MatchPattern,
+        Program, Statement, Type, Vector, ADT,
     };
     use crate::{
         lexer::tokenize,
@@ -1390,5 +1566,21 @@ mod tests {
                 ]),
             )),
         )
+    }
+
+    #[test]
+    fn it_parses_matches() {
+        assert_statement_eq(
+            "match(m) { _ -> 0 }",
+            Statement::Expression(Expression::Match(
+                Box::new(Expression::Identifier(Identifier {
+                    name: String::from("m"),
+                })),
+                vec![MatchArm {
+                    match_pattern: MatchPattern::Any,
+                    expression: Expression::Integer(String::from("0")),
+                }],
+            )),
+        );
     }
 }
