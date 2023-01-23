@@ -71,13 +71,13 @@ pub enum ADT {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum MatchPattern {
-    Any,
+    Any(Identifier),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct MatchArm {
-    match_pattern: MatchPattern,
-    expression: Expression,
+    pub match_pattern: MatchPattern,
+    pub expression: Expression,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -103,7 +103,7 @@ pub enum Expression {
     Map(Map),
     Import(String, String),
     Export(Box<Expression>),
-    ADT(Type, ADT),
+    ADT(ADT),
     Match(Box<Expression>, Vec<MatchArm>),
 }
 
@@ -724,7 +724,7 @@ impl<'a> Parser<'a> {
         current_token: &lexer::Token,
     ) -> Result<MatchArm, Vec<ParseError>> {
         match current_token {
-            lexer::Token::Identifier(identifier) if identifier == "_" => {
+            lexer::Token::Identifier(identifier) => {
                 let current_token = self.tokens.next();
 
                 if current_token != Some(&lexer::Token::Operator(lexer::Operator::MatchArrow)) {
@@ -739,7 +739,9 @@ impl<'a> Parser<'a> {
                 let parsed_expression = self.parse_match_arm_expression();
 
                 parsed_expression.map(|expression| MatchArm {
-                    match_pattern: MatchPattern::Any,
+                    match_pattern: MatchPattern::Any(Identifier {
+                        name: identifier.clone(),
+                    }),
                     expression: expression,
                 })
             }
@@ -951,6 +953,9 @@ impl<'a> Parser<'a> {
                     }),
                 }
             }
+            lexer::Token::Data(identifier) => Expression::Identifier(Identifier {
+                name: identifier.clone(),
+            }),
             lexer::Token::Keyword(_fn) if _fn == "fn" => {
                 let peek_token = self.tokens.peek();
 
@@ -988,20 +993,6 @@ impl<'a> Parser<'a> {
             }
             lexer::Token::Keyword(keyword) if keyword == "adt" => {
                 let current_token = self.tokens.next();
-                let _type = match current_token {
-                    Some(lexer::Token::Type(_type)) => Type::Type(_type.clone()),
-                    Some(token) => Type::Illegal(ParseError {
-                        message: format!(
-                            "Expected type after keyword 'adt' instead received {:?}",
-                            token
-                        ),
-                    }),
-                    None => Type::Illegal(ParseError {
-                        message: String::from("Unexpected EOF after keyword 'adt'"),
-                    }),
-                };
-
-                let current_token = self.tokens.next();
 
                 match current_token {
                     Some(lexer::Token::Delimiter('{')) => {
@@ -1011,7 +1002,7 @@ impl<'a> Parser<'a> {
                             let current_token = self.tokens.next();
 
                             match current_token {
-                                Some(lexer::Token::Identifier(identifier)) => {
+                                Some(lexer::Token::Data(name)) => {
                                     let peek_token = self.tokens.peek();
 
                                     match peek_token {
@@ -1020,16 +1011,12 @@ impl<'a> Parser<'a> {
                                             let arguments = self.parse_arguments();
 
                                             adts.push(ADT::Product(
-                                                Identifier {
-                                                    name: identifier.clone(),
-                                                },
+                                                Identifier { name: name.clone() },
                                                 arguments,
                                             ));
                                         }
                                         _ => adts.push(ADT::Product(
-                                            Identifier {
-                                                name: identifier.clone(),
-                                            },
+                                            Identifier { name: name.clone() },
                                             Arguments::Arguments(vec![]),
                                         )),
                                     }
@@ -1057,9 +1044,9 @@ impl<'a> Parser<'a> {
                             1 => {
                                 let product = adts.first().unwrap();
 
-                                Expression::ADT(_type, product.clone())
+                                Expression::ADT(product.clone())
                             }
-                            _ => Expression::ADT(_type, ADT::Sum(adts)),
+                            _ => Expression::ADT(ADT::Sum(adts)),
                         }
                     }
                     Some(invalid_token) => {
@@ -1089,7 +1076,6 @@ impl<'a> Parser<'a> {
             lexer::Token::Delimiter(_) => todo!(),
             lexer::Token::MapInitializer(_) => todo!(),
             lexer::Token::MapKeySuffix(_) => todo!(),
-            lexer::Token::Type(_) => todo!(),
         }
     }
 
@@ -1212,7 +1198,7 @@ mod tests {
 
     use super::{
         parse, Arguments, Block, Condition, Function, Identifier, Map, MatchArm, MatchPattern,
-        Program, Statement, Type, Vector, ADT,
+        Program, Statement, Vector, ADT,
     };
     use crate::{
         lexer::tokenize,
@@ -1545,25 +1531,35 @@ mod tests {
     #[test]
     fn it_parses_adts() {
         assert_statement_eq(
-            "adt Maybe { some(a) | none }",
-            Statement::Expression(Expression::ADT(
-                Type::Type(String::from("Maybe")),
-                ADT::Sum(vec![
-                    ADT::Product(
-                        Identifier {
-                            name: String::from("some"),
-                        },
-                        Arguments::Arguments(vec![Identifier {
-                            name: String::from("a"),
-                        }]),
-                    ),
-                    ADT::Product(
-                        Identifier {
-                            name: String::from("none"),
-                        },
-                        Arguments::Arguments(vec![]),
-                    ),
-                ]),
+            "adt { Some(a) | None }",
+            Statement::Expression(Expression::ADT(ADT::Sum(vec![
+                ADT::Product(
+                    Identifier {
+                        name: String::from("Some"),
+                    },
+                    Arguments::Arguments(vec![Identifier {
+                        name: String::from("a"),
+                    }]),
+                ),
+                ADT::Product(
+                    Identifier {
+                        name: String::from("None"),
+                    },
+                    Arguments::Arguments(vec![]),
+                ),
+            ]))),
+        )
+    }
+
+    #[test]
+    fn it_parses_data_constructor_calls() {
+        assert_statement_eq(
+            "Some(1)",
+            Statement::Expression(Expression::Call(
+                Box::new(Expression::Identifier(Identifier {
+                    name: String::from("Some"),
+                })),
+                vec![Expression::Integer(String::from("1"))],
             )),
         )
     }
@@ -1577,7 +1573,9 @@ mod tests {
                     name: String::from("m"),
                 })),
                 vec![MatchArm {
-                    match_pattern: MatchPattern::Any,
+                    match_pattern: MatchPattern::Any(Identifier {
+                        name: String::from("_"),
+                    }),
                     expression: Expression::Integer(String::from("0")),
                 }],
             )),

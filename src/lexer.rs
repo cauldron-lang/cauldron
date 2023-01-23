@@ -28,7 +28,7 @@ pub enum Token {
     MapKeySuffix(char),
     Operator(Operator),
     String(String),
-    Type(String),
+    Data(String),
 }
 
 pub type Tokens = Vec<Token>;
@@ -39,7 +39,7 @@ pub fn tokenize(str: &str) -> Tokens {
     let valid_integer = Regex::new("^[0-9]+$").unwrap();
     let valid_alphanum = Regex::new("^[a-zA-Z0-9_]+$").unwrap();
     let valid_keyword = Regex::new("^(if|fn|while|adt|match)$").unwrap();
-    let valid_type = Regex::new("^[A-Z]{1}[a-zA-Z0-9]+$").unwrap();
+    let valid_data = Regex::new("^[A-Z]{1}[a-zA-Z0-9]+$").unwrap();
     let valid_variable = Regex::new("^[a-z0-9_]+$").unwrap();
     let valid_delimiter = Regex::new("^(,|;|\\(|\\)|\\{|\\}|\\[|\\]|\\|)$").unwrap();
     let valid_boolean = Regex::new("^(true|false)$").unwrap();
@@ -137,8 +137,8 @@ pub fn tokenize(str: &str) -> Tokens {
                     boolean if valid_boolean.is_match(boolean) => {
                         tokens.push(Token::Boolean(boolean == "true"))
                     }
-                    _type if valid_type.is_match(_type) => {
-                        tokens.push(Token::Type(String::from(_type)))
+                    data if valid_data.is_match(data) => {
+                        tokens.push(Token::Data(String::from(data)))
                     }
                     variable if valid_variable.is_match(variable) => {
                         tokens.push(Token::Identifier(String::from(variable)))
@@ -455,17 +455,16 @@ mod tests {
 
     #[test]
     fn it_lexes_adts() {
-        let actual = tokenize("adt Maybe { some(a) | none }");
+        let actual = tokenize("adt { Some(a) | None }");
         let expected = Tokens::from(vec![
             Token::Keyword(String::from("adt")),
-            Token::Type(String::from("Maybe")),
             Token::Delimiter('{'),
-            Token::Identifier(String::from("some")),
+            Token::Data(String::from("Some")),
             Token::Delimiter('('),
             Token::Identifier(String::from("a")),
             Token::Delimiter(')'),
             Token::Delimiter('|'),
-            Token::Identifier(String::from("none")),
+            Token::Data(String::from("None")),
             Token::Delimiter('}'),
         ]);
 
@@ -474,14 +473,14 @@ mod tests {
 
     #[test]
     fn it_lexes_matches() {
-        let actual = tokenize("match(s) { some(a) -> 1 | _ -> 0 }");
+        let actual = tokenize("match(s) { Some(a) -> 1 | _ -> 0 }");
         let expected = Tokens::from(vec![
             Token::Keyword(String::from("match")),
             Token::Delimiter('('),
             Token::Identifier(String::from("s")),
             Token::Delimiter(')'),
             Token::Delimiter('{'),
-            Token::Identifier(String::from("some")),
+            Token::Data(String::from("Some")),
             Token::Delimiter('('),
             Token::Identifier(String::from("a")),
             Token::Delimiter(')'),
