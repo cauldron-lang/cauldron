@@ -77,21 +77,25 @@ nums := map([1, 2, 3], fn(a) { a + 1 });
 ```
 
 #### Algebraic Data Types
-ADTs are constructed from one of two possible composite types: product and sum types. Product types are a set of labeled fields that have an AND relationship with each other, e.g. `car(color, make, model)`. Sum types can be used to represent entities with an OR relationship, e.g. `car(color, make, model) | bicycle(color, manufacturer, model, type)`. The name of the type comes after the `adt` keyword and is primarily used for improved error messaging.
+ADTs are constructed from one of two possible composite types: product and sum types. Product types are a set of labeled fields that have an AND relationship with each other, e.g. `Car(color, make, model)`. Sum types can be used to represent entities with an OR relationship, e.g. `Car(color, make, model) | Bicycle(color, manufacturer, model, type)`. The name of the type comes after the `adt` keyword and is primarily used for improved error messaging.
 
 - ADTs are declared using the keyword `adt` followed by a scope where each line should start with a pipe `|` character followed by the structure declaration:
 ```
-adt Vehicle {
-  | car(color, make, model)
-  | bicycle(color, model, manufacturer, type)
-  | skateboard
+adt {
+  | Car(color, make, model)
+  | Bicycle(color, model, manufacturer, type)
+  | Skateboard
 }
 
-courier = bicycle("red", "Bike Maker LLC", "RB1", "road")
+courier = Bicycle("red", "Bike Maker LLC", "RB1", "road")
 courier["color"] == "red"
 courier["model"] == "RB1"
-pedestrian := skateboard()
+pedestrian := Skateboard()
 ```
+
+Data constructors in ADTs are capitalized to disambiguate from function calls in the language. This is be done to make it easier to distinguish in a destructuring context. For example, destructuring into a variable like `color` could contain any primitive value since it's a variable whereas destructuring into a sum type variant like `Color` should match the literal `Color`.
+
+FIXME: Consider changing `adt` keyword to `data` and removing the requirement on naming the type since it should be inferred.
 
 ### Control Flow
 - Conditionals must use `if` and optionally `else` keywords

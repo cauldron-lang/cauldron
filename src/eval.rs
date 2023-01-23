@@ -4,7 +4,10 @@ pub mod object;
 
 use crate::{
     lexer,
-    parser::{self, Arguments, Block, Function, InfixOperator, PrefixOperator, Type, ADT},
+    parser::{
+        self, Arguments, Block, Function, InfixOperator, MatchArm, MatchPattern, PrefixOperator,
+        Type, ADT,
+    },
 };
 use env::Environment;
 use object::{MapKey, Object, Result};
@@ -164,6 +167,28 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
         parser::Expression::Invalid(_) => todo!(),
         parser::Expression::Function(Function { arguments, block }) => {
             Object::Function(arguments, block, environment.clone())
+        }
+        parser::Expression::Match(expression, match_arms) => {
+            let matchable = eval_expression(*expression, environment);
+
+            for match_arm in match_arms.iter() {
+                let MatchArm {
+                    match_pattern,
+                    expression,
+                } = &*match_arm;
+
+                match (&matchable, match_pattern) {
+                    (_, MatchPattern::Any(identifier)) => {
+                        let mut new_environment = environment.clone();
+
+                        new_environment.set(identifier.name.clone(), matchable);
+
+                        return eval_expression(expression.clone(), &mut new_environment);
+                    }
+                }
+            }
+
+            return Object::Error(String::from("Failed to match on any match arms"));
         }
         parser::Expression::Block(_) => todo!(),
         parser::Expression::Vector(vector) => match vector {
@@ -332,18 +357,19 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
 
             Object::Void
         }
-        parser::Expression::ADT(_type, adt) => eval_adt(_type, adt, environment),
+        parser::Expression::ADT(adt) => eval_adt(adt, environment),
+        parser::Expression::Match(_, _) => todo!(),
     }
 }
 
-fn eval_adt(_type: Type, adt: ADT, environment: &mut Environment) -> Object {
+fn eval_adt(adt: ADT, environment: &mut Environment) -> Object {
     match adt {
         parser::ADT::Product(identifier, arguments) => {
             environment.set(identifier.name, Object::BIF(BIF::CreateProduct(arguments)))
         }
         parser::ADT::Sum(adts) => {
             for adt in adts.iter() {
-                eval_adt(_type.clone(), adt.clone(), environment);
+                eval_adt(adt.clone(), environment);
             }
         }
     };
@@ -746,14 +772,21 @@ mod tests {
 
     #[test]
     fn it_evaluates_adts() {
-        let code = "adt Maybe { some(value) | none }; maybe_one := some(1); maybe_one";
+        let code = "adt { Some(value) | None }; maybe_one := Some(1); maybe_one";
 
         assert_evaluated_object(
             code,
             Object::Product(
-                String::from("some"),
+                String::from("Some"),
                 HashMap::from([(String::from("value"), Object::Integer(1))]),
             ),
         );
+    }
+
+    #[test]
+    fn it_evaluates_matches() {
+        let code = "match(1) { foo -> foo }";
+
+        assert_evaluated_object(code, Object::Integer(1))
     }
 }
