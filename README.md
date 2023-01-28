@@ -1,4 +1,18 @@
-## Overview
+## Getting Started
+
+### Interpreter Commands
+The cauldron binary ships with several subcommands for working with cauldron code:
+- `run` - Evaluates a `cld` file by passing it as the first argument to the `run` subcommand, e.g. `cauldron run <path_to_file>`
+- `lex` - Lexes a `cld` file and prints the tokens, e.g. `cauldron lex <path_to_file>`
+- `rlpl` - Reads a line from the prompt into the lexer, prints the corresponding tokens, and repeat, e.g. `cauldron rlpl`
+- `rppl` - Reads a line from the prompt into the parser, prints the corresponding tokens, and repeat, e.g. `cauldron rppl`
+- `repl` - Reads a line from the prompt into the evaluator, prints the result, and repeat, e.g. `cauldron repl`
+
+For finer grained immediate feedback the interpreter comes with multiple read print loops:
+1. Read Print Lex Loop - Print tokenized form of 
+
+
+## Language Overview
 Cauldron is a programming language focusing on simplicity and consistency
 
 ![Logo](https://raw.githubusercontent.com/cauldron-lang/cauldron/1c99a4ee3e606632d11bc084b1dea7d8656443bf/cauldron_logo.png)
