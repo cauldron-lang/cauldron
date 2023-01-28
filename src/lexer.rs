@@ -19,6 +19,8 @@ pub enum Operator {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     Boolean(bool),
+    Comment(String),
+    Data(String),
     Delimiter(char),
     Identifier(String),
     Illegal,
@@ -28,7 +30,6 @@ pub enum Token {
     MapKeySuffix(char),
     Operator(Operator),
     String(String),
-    Data(String),
 }
 
 pub type Tokens = Vec<Token>;
@@ -49,6 +50,21 @@ pub fn tokenize(str: &str) -> Tokens {
         let peek = characters.peek();
 
         match current {
+            Some('#') => {
+                let mut buffer = String::new();
+
+                loop {
+                    let current = characters.next();
+
+                    match current {
+                        Some('\n') | None => {
+                            tokens.push(Token::Comment(buffer));
+                            break;
+                        }
+                        Some(char) => buffer.push(char.clone()),
+                    }
+                }
+            }
             Some('"') => {
                 let mut buffer = String::new();
 
@@ -492,6 +508,16 @@ mod tests {
             Token::Integer(String::from("0")),
             Token::Delimiter('}'),
         ]);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn it_lexes_comments() {
+        let actual = tokenize("# TODO: implement comments");
+        let expected = Tokens::from(vec![Token::Comment(String::from(
+            " TODO: implement comments",
+        ))]);
 
         assert_eq!(actual, expected);
     }

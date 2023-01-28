@@ -6,7 +6,7 @@ use crate::{
     lexer,
     parser::{
         self, Arguments, Block, Function, InfixOperator, MatchArm, MatchPattern, PrefixOperator,
-        Type, ADT,
+        ADT,
     },
 };
 use env::Environment;
@@ -359,6 +359,7 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
         }
         parser::Expression::ADT(adt) => eval_adt(adt, environment),
         parser::Expression::Match(_, _) => todo!(),
+        parser::Expression::Comment(_) => Object::Void,
     }
 }
 
@@ -507,12 +508,16 @@ mod tests {
         Environment::new(PathBuf::new())
     }
 
-    fn assert_evaluated_object(code: &str, object: Object) {
+    fn assert_evaluated_result(code: &str, result: Result) {
         let parsed = parse(tokenize(code));
         let mut environment = stub_env();
         let actual = eval(parsed, &mut environment);
 
-        assert_eq!(actual, Result::Object(object));
+        assert_eq!(actual, result);
+    }
+
+    fn assert_evaluated_object(code: &str, object: Object) {
+        assert_evaluated_result(code, Result::Object(object))
     }
 
     #[test]
@@ -788,5 +793,12 @@ mod tests {
         let code = "match(1) { foo -> foo }";
 
         assert_evaluated_object(code, Object::Integer(1))
+    }
+
+    #[test]
+    fn it_evaluates_comments() {
+        let code = "# TODO: evaluate comments";
+
+        assert_evaluated_result(code, Result::Void);
     }
 }
