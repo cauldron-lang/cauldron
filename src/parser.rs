@@ -105,6 +105,7 @@ pub enum Expression {
     Export(Box<Expression>),
     ADT(ADT),
     Match(Box<Expression>, Vec<MatchArm>),
+    Comment(String),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -1076,6 +1077,7 @@ impl<'a> Parser<'a> {
             lexer::Token::Delimiter(_) => todo!(),
             lexer::Token::MapInitializer(_) => todo!(),
             lexer::Token::MapKeySuffix(_) => todo!(),
+            lexer::Token::Comment(str) => Expression::Comment(str.clone()),
         }
     }
 
@@ -1579,6 +1581,14 @@ mod tests {
                     expression: Expression::Integer(String::from("0")),
                 }],
             )),
+        );
+    }
+
+    #[test]
+    fn it_parses_comments() {
+        assert_expression_eq(
+            "# TODO: test comments",
+            Expression::Comment(String::from(" TODO: test comments")),
         );
     }
 }
