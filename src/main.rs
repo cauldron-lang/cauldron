@@ -32,6 +32,11 @@ fn main() {
         "rlpl" => print_loop(SubCommand::ReadLexPrintLoop),
         "rppl" => print_loop(SubCommand::ReadParsePrintLoop),
         "repl" => print_loop(SubCommand::ReadEvaluatePrintLoop),
+        "parse" => {
+            let filepath = args.next().expect("Missing path to file!");
+
+            parse_file(String::from(filepath));
+        }
         "lex" => {
             let filepath = args.next().expect("Missing path to file!");
 
@@ -78,6 +83,24 @@ fn interpret_file(file_path: String) {
     }
 }
 
+fn parse_file(file_path: String) {
+    match env::current_dir() {
+        Ok(cwd) => match fs::read_to_string(file_path.clone()) {
+            Ok(code) => {
+                let mut source_context = PathBuf::from(cwd);
+                source_context.push(file_path.clone());
+
+                println!("{:#?}", parser::parse(lexer::tokenize(code.as_str().trim_end())))
+            }
+            Err(error) => panic!("Unable to read file due to error: {:?}", error),
+        },
+        Err(error) => panic!(
+            "Cannot access current working directory due to error: {:?}",
+            error
+        ),
+    }
+}
+
 fn lex_file(file_path: String) {
     match env::current_dir() {
         Ok(cwd) => match fs::read_to_string(file_path.clone()) {
@@ -85,7 +108,7 @@ fn lex_file(file_path: String) {
                 let mut source_context = PathBuf::from(cwd);
                 source_context.push(file_path.clone());
 
-                println!("{:?}", lexer::tokenize(code.as_str().trim_end()));
+                println!("{:#?}", lexer::tokenize(code.as_str().trim_end()));
             }
             Err(error) => panic!("Unable to read file due to error: {:?}", error),
         },
@@ -113,10 +136,10 @@ fn print_loop(subcommand: SubCommand) {
                 let tokens = lexer::tokenize(code.as_str().trim_end());
 
                 match subcommand {
-                    SubCommand::ReadLexPrintLoop => println!("{:?}", tokens),
-                    SubCommand::ReadParsePrintLoop => println!("{:?}", parser::parse(tokens)),
+                    SubCommand::ReadLexPrintLoop => println!("{:#?}", tokens),
+                    SubCommand::ReadParsePrintLoop => println!("{:#?}", parser::parse(tokens)),
                     SubCommand::ReadEvaluatePrintLoop => {
-                        println!("{:?}", eval::eval(parser::parse(tokens), &mut environment))
+                        println!("{:#?}", eval::eval(parser::parse(tokens), &mut environment))
                     }
                 }
             }
