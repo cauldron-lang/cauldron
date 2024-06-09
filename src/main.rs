@@ -90,7 +90,7 @@ fn parse_file(file_path: String) {
                 let mut source_context = PathBuf::from(cwd);
                 source_context.push(file_path.clone());
 
-                println!("{:?}", parser::parse(lexer::tokenize(code.as_str().trim_end())))
+                println!("{:#?}", parser::parse(lexer::tokenize(code.as_str().trim_end())))
             }
             Err(error) => panic!("Unable to read file due to error: {:?}", error),
         },
@@ -108,7 +108,7 @@ fn lex_file(file_path: String) {
                 let mut source_context = PathBuf::from(cwd);
                 source_context.push(file_path.clone());
 
-                println!("{:?}", lexer::tokenize(code.as_str().trim_end()));
+                println!("{:#?}", lexer::tokenize(code.as_str().trim_end()));
             }
             Err(error) => panic!("Unable to read file due to error: {:?}", error),
         },
@@ -136,10 +136,10 @@ fn print_loop(subcommand: SubCommand) {
                 let tokens = lexer::tokenize(code.as_str().trim_end());
 
                 match subcommand {
-                    SubCommand::ReadLexPrintLoop => println!("{:?}", tokens),
-                    SubCommand::ReadParsePrintLoop => println!("{:?}", parser::parse(tokens)),
+                    SubCommand::ReadLexPrintLoop => println!("{:#?}", tokens),
+                    SubCommand::ReadParsePrintLoop => println!("{:#?}", parser::parse(tokens)),
                     SubCommand::ReadEvaluatePrintLoop => {
-                        println!("{:?}", eval::eval(parser::parse(tokens), &mut environment))
+                        println!("{:#?}", eval::eval(parser::parse(tokens), &mut environment))
                     }
                 }
             }
