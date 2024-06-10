@@ -4,6 +4,7 @@
 The cauldron binary ships with several subcommands for working with cauldron code:
 - `run` - Evaluates a `cld` file by passing it as the first argument to the `run` subcommand, e.g. `cauldron run <path_to_file>`
 - `lex` - Lexes a `cld` file and prints the tokens, e.g. `cauldron lex <path_to_file>`
+- `parse` - Parses a `cld` file and prints the AST, e.g. `cauldron parse <path_to_file>`
 - `rlpl` - Reads a line from the prompt into the lexer, prints the corresponding tokens, and repeat, e.g. `cauldron rlpl`
 - `rppl` - Reads a line from the prompt into the parser, prints the corresponding tokens, and repeat, e.g. `cauldron rppl`
 - `repl` - Reads a line from the prompt into the evaluator, prints the result, and repeat, e.g. `cauldron repl`
@@ -112,8 +113,6 @@ pedestrian := Skateboard()
 
 Data constructors in ADTs are capitalized to disambiguate from function calls in the language. This is be done to make it easier to distinguish in a destructuring context. For example, destructuring into a variable like `color` could contain any primitive value since it's a variable whereas destructuring into a sum type variant like `Color` should match the literal `Color`.
 
-FIXME: Consider changing `adt` keyword to `data` and removing the requirement on naming the type since it should be inferred.
-
 ### Control Flow
 - Conditionals must use `if` and optionally `else` keywords
 ```
@@ -121,6 +120,13 @@ if(1 == 1) {
   print("Equality works!");
 } else {
   print("Equality is broken :(");
+}
+```
+- Matching on values with destructuring support
+```
+match(maybe_value) {
+  Some(value) -> print(value)
+  None        -> print("No value found!")
 }
 ```
 - Looping construct
