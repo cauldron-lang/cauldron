@@ -72,6 +72,7 @@ pub enum ADT {
 #[derive(Debug, PartialEq, Clone)]
 pub enum MatchPattern {
     Any(Identifier),
+    ADT(Identifier, Arguments),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -720,6 +721,48 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_match_arm_adt_arguments(&mut self) -> Result<Arguments, Vec<ParseError>> {
+        let current_token = self.tokens.next();
+
+        match current_token {
+            Some(token) => {
+                match token {
+                    lexer::Token::Delimiter('(') => {
+                        let mut current_token = self.tokens.next();
+                        let mut arguments = vec![];
+
+                        while current_token != Some(&lexer::Token::Delimiter(')'))  {
+                            match current_token.clone() {
+                                Some(lexer::Token::Identifier(name)) => {
+                                    arguments.push(Identifier { name: name.clone() });
+                                    current_token = self.tokens.next();
+                                }
+                                Some(token) => {
+                                    return self
+                                        .parse_result_error(String::from(format!("Unexpected token after ADT: {:?}", token)))
+                                        .map_err(|parse_error| vec![parse_error])
+                                }
+                                None => {
+                                    return self
+                                        .parse_result_error(String::from(format!("Unexpected token after ADT: {:?}", token)))
+                                        .map_err(|parse_error| vec![parse_error])
+                                }
+                            }
+                        }
+
+                        return Ok(Arguments::Arguments(arguments));
+                    }
+                    _ => self
+                        .parse_result_error(String::from(format!("Unexpected token after ADT: {:?}", token)))
+                        .map_err(|parse_error| vec![parse_error])
+                }
+            }
+            None => self
+                .parse_result_error(String::from("Unexpected EOF in match arm"))
+                .map_err(|parse_error| vec![parse_error]),
+        }
+    }
+
     fn parse_match_arm(
         &mut self,
         current_token: &lexer::Token,
@@ -745,6 +788,30 @@ impl<'a> Parser<'a> {
                     }),
                     expression: expression,
                 })
+            }
+            lexer::Token::Data(data_name) => {
+                let parsed_arguments = self.parse_match_arm_adt_arguments();
+                let current_token = self.tokens.next();
+
+                if current_token != Some(&lexer::Token::Operator(lexer::Operator::MatchArrow)) {
+                    return self
+                        .parse_result_error(format!(
+                            "Unexpected token in match arm: {:?}",
+                            current_token
+                        ))
+                        .map_err(|parse_error| vec![parse_error]);
+                }
+
+                let parsed_expression = self.parse_match_arm_expression();
+
+                parsed_arguments.and_then(|arguments|
+                    parsed_expression.map(|expression| MatchArm {
+                        match_pattern: MatchPattern::ADT(Identifier {
+                            name: data_name.clone(),
+                        }, arguments),
+                        expression,
+                    })
+                )
             }
             token => self
                 .parse_result_error(format!("Unexpected token in match arm: {:?}", token))
@@ -1582,6 +1649,33 @@ mod tests {
                 }],
             )),
         );
+    }
+
+    #[test]
+    fn it_parses_matches_with_adts() {
+        assert_statement_eq(
+            "match(maybe) { Some(value) -> 1 }",
+            Statement::Expression(Expression::Match(
+                Box::new(Expression::Identifier(Identifier {
+                    name: String::from("maybe"),
+                })),
+                vec![MatchArm {
+                    match_pattern: MatchPattern::ADT(
+                        Identifier {
+                            name: String::from("Some"),
+                        },
+                        Arguments::Arguments(
+                            vec![
+                                Identifier {
+                                    name: String::from("value")
+                                }
+                            ]
+                        ),
+                    ),
+                    expression: Expression::Integer(String::from("1")),
+                }],
+            )),
+        )
     }
 
     #[test]

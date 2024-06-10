@@ -10,5 +10,4 @@ maybe_one := Some(1)
 
 match(maybe_one) {
   Some(value) -> print(value)
-  None        -> print("No Value")
 }

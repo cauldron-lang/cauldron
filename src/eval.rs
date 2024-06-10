@@ -178,6 +178,18 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
                 } = &*match_arm;
 
                 match (&matchable, match_pattern) {
+                    (Object::Product(product, product_map), MatchPattern::ADT(identifier, Arguments::Arguments(arguments))) if *product == identifier.name => {
+                        let mut new_environment = environment.clone();
+
+                        for argument in arguments {
+                            match product_map.get(&argument.name) {
+                                Some(value) => new_environment.set(argument.name.clone(), value.clone()),
+                                None => {}
+                            }
+                        }
+
+                        return eval_expression(expression.clone(), &mut new_environment);
+                    }
                     (_, MatchPattern::Any(identifier)) => {
                         let mut new_environment = environment.clone();
 
@@ -185,6 +197,7 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
 
                         return eval_expression(expression.clone(), &mut new_environment);
                     }
+                    _ => panic!("Missing case when evaluating match expression")
                 }
             }
 
@@ -358,7 +371,6 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
             Object::Void
         }
         parser::Expression::ADT(adt) => eval_adt(adt, environment),
-        parser::Expression::Match(_, _) => todo!(),
         parser::Expression::Comment(_) => Object::Void,
     }
 }
@@ -791,6 +803,13 @@ mod tests {
     #[test]
     fn it_evaluates_matches() {
         let code = "match(1) { foo -> foo }";
+
+        assert_evaluated_object(code, Object::Integer(1))
+    }
+
+    #[test]
+    fn it_evaluates_matches_with_adts() {
+        let code = "adt { Some(v) }; match(Some(1)) { Some(v) -> v }";
 
         assert_evaluated_object(code, Object::Integer(1))
     }
