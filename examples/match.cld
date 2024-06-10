@@ -1,0 +1,13 @@
+io := import("bifs:io")
+print := io["print"]
+
+adt {
+  | Some(value)
+  | None
+}
+
+maybe_one := Some(1)
+
+match(maybe_one) {
+  Some(value) -> print(value)
+}
