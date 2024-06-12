@@ -752,6 +752,9 @@ impl<'a> Parser<'a> {
 
                         return Ok(Arguments::Arguments(arguments));
                     }
+                    lexer::Token::Operator(lexer::Operator::MatchArrow) => {
+                        return Ok(Arguments::Arguments(vec![]));
+                    }
                     _ => self
                         .parse_result_error(String::from(format!("Unexpected token after ADT: {:?}", token)))
                         .map_err(|parse_error| vec![parse_error])
@@ -790,7 +793,15 @@ impl<'a> Parser<'a> {
                 })
             }
             lexer::Token::Data(data_name) => {
-                let parsed_arguments = self.parse_match_arm_adt_arguments();
+                let peek_token = self.tokens.peek();
+                let parsed_arguments = match peek_token {
+                    Some(&&lexer::Token::Delimiter('(')) => self.parse_match_arm_adt_arguments(),
+                    Some(&&lexer::Token::Operator(lexer::Operator::MatchArrow)) => Ok(Arguments::Arguments(vec![])),
+                    _ => self
+                        .parse_result_error(String::from("Unexpected token after ADT"))
+                        .map_err(|parse_error| vec![parse_error])
+                };
+
                 let current_token = self.tokens.next();
 
                 if current_token != Some(&lexer::Token::Operator(lexer::Operator::MatchArrow)) {
@@ -1654,26 +1665,37 @@ mod tests {
     #[test]
     fn it_parses_matches_with_adts() {
         assert_statement_eq(
-            "match(maybe) { Some(value) -> 1 }",
+            "match(maybe) { Some(value) -> 1 | None -> 0 }",
             Statement::Expression(Expression::Match(
                 Box::new(Expression::Identifier(Identifier {
                     name: String::from("maybe"),
                 })),
-                vec![MatchArm {
-                    match_pattern: MatchPattern::ADT(
-                        Identifier {
-                            name: String::from("Some"),
-                        },
-                        Arguments::Arguments(
-                            vec![
-                                Identifier {
-                                    name: String::from("value")
-                                }
-                            ]
+                vec![
+                    MatchArm {
+                        match_pattern: MatchPattern::ADT(
+                            Identifier {
+                                name: String::from("Some"),
+                            },
+                            Arguments::Arguments(
+                                vec![
+                                    Identifier {
+                                        name: String::from("value")
+                                    }
+                                ]
+                            ),
                         ),
-                    ),
-                    expression: Expression::Integer(String::from("1")),
-                }],
+                        expression: Expression::Integer(String::from("1")),
+                    },
+                     MatchArm {
+                         match_pattern: MatchPattern::ADT(
+                             Identifier {
+                                 name: String::from("None")
+                             },
+                             Arguments::Arguments(vec![])
+                         ),
+                         expression: Expression::Integer(String::from("0"))
+                     }
+                ],
             )),
         )
     }
