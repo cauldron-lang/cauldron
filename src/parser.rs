@@ -1632,7 +1632,7 @@ mod tests {
     }
 
     #[test]
-    fn it_parses_data_constructor_calls() {
+    fn it_parses_data_constructor_calls_with_argument() {
         assert_statement_eq(
             "Some(1)",
             Statement::Expression(Expression::Call(
@@ -1640,6 +1640,19 @@ mod tests {
                     name: String::from("Some"),
                 })),
                 vec![Expression::Integer(String::from("1"))],
+            )),
+        )
+    }
+
+    #[test]
+    fn it_parses_data_constructor_calls_without_arguments() {
+        assert_statement_eq(
+            "None()",
+            Statement::Expression(Expression::Call(
+                Box::new(Expression::Identifier(Identifier {
+                    name: String::from("None"),
+                })),
+                vec![],
             )),
         )
     }

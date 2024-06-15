@@ -197,7 +197,7 @@ fn eval_expression(expression: parser::Expression, environment: &mut Environment
 
                         return eval_expression(expression.clone(), &mut new_environment);
                     }
-                    _ => panic!("Missing case when evaluating match expression")
+                    _ => {}
                 }
             }
 
@@ -812,6 +812,13 @@ mod tests {
         let code = "adt { Some(v) }; match(Some(1)) { Some(v) -> v }";
 
         assert_evaluated_object(code, Object::Integer(1))
+    }
+
+    #[test]
+    fn it_evaluates_matches_with_multi_armed_adts() {
+        let code = "adt { Some(v) | None }; match(None()) { Some(v) -> v | None -> 0 }";
+
+        assert_evaluated_object(code, Object::Integer(0))
     }
 
     #[test]
