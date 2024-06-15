@@ -6,7 +6,7 @@ adt {
   | None
 }
 
-maybe_one := Some(1)
+maybe_one := None()
 
 match(maybe_one) {
   Some(value) -> print(value)
